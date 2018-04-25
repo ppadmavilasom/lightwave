@@ -71,12 +71,6 @@ VmDirFreeBindingHandle(
     handle_t *ppBinding
     );
 
-static
-DWORD
-_VmDirMkdir(
-    PCSTR path,
-    int mode);
-
 int
 VmDirFirstReplicationCycle(
     PSTR pszHostname
@@ -196,7 +190,7 @@ _VmDirGetRemoteDBUsingRPC(
     BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, (pszLocalErrorMsg),
             "_VmDirGetRemoteDBUsingRPC: VmDirStringPrintFA() call failed with error: %d", retVal );
 
-    retVal = _VmDirMkdir(localDir, 0700);
+    retVal = VmDirMkdir(localDir, 0700);
     BAIL_ON_VMDIR_ERROR( retVal );
 
     if (low_xlognum > 0)
@@ -205,9 +199,9 @@ _VmDirGetRemoteDBUsingRPC(
         BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, (pszLocalErrorMsg),
                 "_VmDirGetRemoteDBUsingRPC: VmDirStringPrintFA() call failed with error: %d", retVal );
 
-        retVal = _VmDirMkdir(localXlogDir, 0700);
+        retVal = VmDirMkdir(localXlogDir, 0700);
         BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, (pszLocalErrorMsg),
-                "_VmDirGetRemoteDBUsingRPC: _VmDirMkdir() call failed with error: %d %s", retVal );
+                "_VmDirGetRemoteDBUsingRPC: VmDirMkdir() call failed with error: %d %s", retVal );
     }
 
     retVal = VmDirStringPrintFA( dbRemoteFilename, VMDIR_MAX_FILE_NAME_LEN, "%s/%s", (char *)pDbPath,
@@ -451,20 +445,13 @@ static
 VOID
 _VmDirShutdownDB()
 {
-    PVDIR_BACKEND_INTERFACE pBE = NULL;
-
-    // Shutdown backend
-    pBE = VmDirBackendSelect(NULL);
-    assert(pBE);
-
     VmDirdStateSet(VMDIRD_STATE_SHUTDOWN);
 
     VmDirSchemaLibShutdown();
 
     VmDirIndexLibShutdown();
 
-    pBE->pfnBEShutdown();
-    VmDirBackendContentFree(pBE);
+    VmDirShutdownAndFreeAllBackends();
 }
 
 static
@@ -580,36 +567,5 @@ cleanup:
 error:
     retVal = LDAP_OPERATIONS_ERROR;
     VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "%s", VDIR_SAFE_STRING(pszLocalErrorMsg) );
-    goto cleanup;
-}
-
-static
-DWORD
-_VmDirMkdir(
-    PCSTR path,
-    int mode
-    )
-{
-    DWORD   dwError = 0;
-#ifdef _WIN32
-    if(CreateDirectory(path, NULL)==0)
-    {
-        errno = WSAGetLastError();
-        dwError = VMDIR_ERROR_IO;
-        goto error;
-    }
-#else
-    if(mkdir(path, mode)!=0)
-    {
-        dwError = VMDIR_ERROR_IO;
-        goto error;
-    }
-#endif
-
-cleanup:
-    return dwError;
-
-error:
-    VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "_VmDirMkdir on dir %s failed (%u) errno: (%d)", path, dwError, errno);
     goto cleanup;
 }

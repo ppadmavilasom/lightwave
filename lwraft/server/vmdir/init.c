@@ -113,6 +113,52 @@ error:
     goto cleanup;
 }
 
+/*
+ * initialize all additional instances.
+*/
+DWORD
+VmDirInitInstanceCB(
+    PVDIR_BACKEND_INSTANCE pInstance,
+    PVOID pUnused
+    )
+{
+    DWORD   dwError = 0;
+    PVDIR_BACKEND_INTERFACE pBE = NULL;
+    BOOLEAN bExists = FALSE;
+
+    if (!pInstance || !pInstance->pBE)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
+    }
+
+    /* skip databases that are already initialized */
+    if (pInstance->hDB)
+    {
+        goto error;
+    }
+
+    pBE = pInstance->pBE;
+
+    VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Init: %s", pInstance->pszDbPath);
+
+    /* ensure db path exists */
+    dwError = VmDirDirectoryExists(pInstance->pszDbPath, &bExists);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (!bExists)
+    {
+        dwError = VmDirMkdir(pInstance->pszDbPath, 0700);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = pBE->pfnBEInit(FALSE, pInstance->pszDbPath, &pInstance->hDB);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+error:
+
+    return dwError;
+}
+
 DWORD
 VmDirInitBackend(
     VOID
@@ -122,15 +168,29 @@ VmDirInitBackend(
     PVDIR_BACKEND_INTERFACE pBE = NULL;
     PVMDIR_MUTEX    pSchemaModMutex = NULL;
     BOOLEAN bInitializeEntries = FALSE;
+    PVDIR_BACKEND_INSTANCE pInstance = NULL;
 
     dwError = VmDirBackendConfig();
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    /* get the main database backend */
     pBE = VmDirBackendSelect(NULL);
     assert(pBE);
 
-    dwError = pBE->pfnBEInit();
+    dwError = VmDirInstanceFromBE(pBE, &pInstance);
     BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = pBE->pfnBEInit(TRUE, pInstance->pszDbPath, &pInstance->hDB);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+#ifdef MULTI_MDB_ENABLED
+    VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Start: Initialize additional databases");
+
+    dwError = VmDirIterateInstances(VmDirInitInstanceCB, NULL);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "End: Initialize additional databases");
+#endif
 
     /*
      * Attribute indices are configured by attribute type entries.
@@ -161,7 +221,12 @@ VmDirInitBackend(
         dwError = _VmDirGenerateInvocationId(); // to be used in replication meta data for the entries created in
         BAIL_ON_VMDIR_ERROR(dwError);           // InitializeVmdirdSystemEntries()
 
-        dwError = VmDirInitRaftPsState();
+/* LOGSEP REVIEW */
+        dwError = VmDirInitRaftPsState(pBE);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+pBE = VmDirBackendSelect(RAFT_CONTEXT_DN);
+        dwError = VmDirInitRaftPsState(pBE);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         dwError = InitializeVmdirdSystemEntries();
@@ -351,7 +416,7 @@ VmDirInit(
         dwError = VmDirInitConnAcceptThread();
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        dwError = VmDirRESTServerInit();
+        //dwError = VmDirRESTServerInit();
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 

@@ -16,23 +16,23 @@
 
 DWORD
 InitializeIndexingThread(
-    VOID
+    PVDIR_INDEX_DATA pIndexData
     )
 {
     DWORD   dwError = 0;
 
     dwError = VmDirSrvThrInit(
-            &gVdirIndexGlobals.pThrInfo,
+            &pIndexData->pThrInfo,
             gVdirIndexGlobals.mutex,
-            gVdirIndexGlobals.cond,
+            pIndexData->cond,
             TRUE);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirCreateThread(
-            &gVdirIndexGlobals.pThrInfo->tid,
-            gVdirIndexGlobals.pThrInfo->bJoinThr,
+            &pIndexData->pThrInfo->tid,
+            pIndexData->pThrInfo->bJoinThr,
             VmDirIndexingThreadFun,
-            gVdirIndexGlobals.pThrInfo);
+            pIndexData);
     BAIL_ON_VMDIR_ERROR(dwError);
 
 cleanup:
@@ -52,6 +52,8 @@ VmDirIndexingThreadFun(
     BOOLEAN bResume = FALSE;
     VDIR_SERVER_STATE   vmdirState = VMDIRD_STATE_UNDEFINED;
     PVDIR_INDEXING_TASK pTask = NULL;
+    PVDIR_INDEX_DATA pIndexData = (PVDIR_INDEX_DATA)pArg;
+    PVDIR_BACKEND_INTERFACE pBE = pIndexData->pBE;
 
 resume:
     while (1)
@@ -71,29 +73,29 @@ resume:
 
         if (!bResume)
         {
-            PVDIR_INDEX_UPD pIndexUpd = gVdirIndexGlobals.pIndexUpd;
+            PVDIR_INDEX_UPD pIndexUpd = pIndexData->pIndexUpd;
 
             // record current progress
-            dwError = VmDirIndexingTaskRecordProgress(pTask, pIndexUpd);
+            dwError = VmDirIndexingTaskRecordProgress(pBE, pTask, pIndexUpd);
             BAIL_ON_VMDIR_ERROR(dwError);
 
             // apply index updates
-            dwError = VmDirIndexUpdApply(pIndexUpd);
+            dwError = VmDirIndexUpdApply(pBE, pIndexUpd);
             BAIL_ON_VMDIR_ERROR(dwError);
 
             VmDirIndexUpdFree(pIndexUpd);
-            gVdirIndexGlobals.pIndexUpd = NULL;
+            pIndexData->pIndexUpd = NULL;
 
             // compute new task
             VmDirFreeIndexingTask(pTask);
-            dwError = VmDirIndexingTaskCompute(&pTask);
+            dwError = VmDirIndexingTaskCompute(pBE, &pTask);
             BAIL_ON_VMDIR_ERROR(dwError);
         }
 
         if (VmDirIndexingTaskIsNoop(pTask))
         {
             dwError = VmDirConditionWait(
-                    gVdirIndexGlobals.cond,
+                    pIndexData->cond,
                     gVdirIndexGlobals.mutex);
             BAIL_ON_VMDIR_ERROR(dwError);
 
@@ -102,13 +104,13 @@ resume:
 
         VMDIR_UNLOCK_MUTEX(bInLock, gVdirIndexGlobals.mutex);
 
-        dwError = VmDirIndexingTaskPopulateIndices(pTask);
+        dwError = VmDirIndexingTaskPopulateIndices(pBE, pTask);
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        dwError = VmDirIndexingTaskValidateScopes(pTask);
+        dwError = VmDirIndexingTaskValidateScopes(pBE, pTask);
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        dwError = VmDirIndexingTaskDeleteIndices(pTask);
+        dwError = VmDirIndexingTaskDeleteIndices(pBE, pTask);
         BAIL_ON_VMDIR_ERROR(dwError);
         bResume = FALSE;
     }

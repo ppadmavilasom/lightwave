@@ -34,21 +34,28 @@ typedef struct _VDIR_INDEXING_TASK
 
 } VDIR_INDEXING_TASK, *PVDIR_INDEXING_TASK;
 
-typedef struct _VDIR_INDEX_GLOBALS
+typedef struct _VDIR_INDEX_DATA
 {
-    // NOTE: order of fields MUST stay in sync with struct initializer...
-    PVMDIR_MUTEX        mutex;
-    PVMDIR_COND         cond;
-    PLW_HASHMAP         pIndexCfgMap;
-    PVDIR_INDEX_UPD     pIndexUpd;
+    PVDIR_BACKEND_INTERFACE pBE;
+    PVMDIR_COND             cond;
+    PLW_HASHMAP             pIndexCfgMap;
+    PVDIR_INDEX_UPD         pIndexUpd;
 
-    // fields used to determine index status during bootstrap
-    BOOLEAN             bFirstboot;
 
     // current indexing offset
-    ENTRYID             offset;
+    ENTRYID                 offset;
 
     // indexing thread info
-    PVDIR_THREAD_INFO   pThrInfo;
+    PVDIR_THREAD_INFO       pThrInfo;
 
+} VDIR_INDEX_DATA, *PVDIR_INDEX_DATA;
+
+typedef struct _VDIR_INDEX_GLOBALS
+{
+    //this is the shared schema mutex.
+    PVMDIR_MUTEX        mutex;
+    // fields used to determine index status during bootstrap
+    BOOLEAN             bFirstboot;
+    //Map of backend to index global data
+    PLW_HASHMAP         pDBIndexData;
 } VDIR_INDEX_GLOBALS, *PVDIR_INDEX_GLOBALS;

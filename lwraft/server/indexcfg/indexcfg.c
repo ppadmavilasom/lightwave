@@ -76,6 +76,7 @@ error:
 
 DWORD
 VmDirDefaultIndexCfgInit(
+    PVDIR_BACKEND_INTERFACE pBE,
     PVDIR_DEFAULT_INDEX_CFG pDefIdxCfg,
     PVDIR_INDEX_CFG*        ppIndexCfg
     )
@@ -88,7 +89,7 @@ VmDirDefaultIndexCfgInit(
     VDIR_BACKEND_CTX    beCtx = {0};
     BOOLEAN             bHasTxn = FALSE;
 
-    if (!pDefIdxCfg || !ppIndexCfg)
+    if (!pBE || !pDefIdxCfg || !ppIndexCfg)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -103,7 +104,7 @@ VmDirDefaultIndexCfgInit(
     pIndexCfg->bIsNumeric = pDefIdxCfg->bIsNumeric;
     pIndexCfg->iTypes = pDefIdxCfg->iTypes;
 
-    beCtx.pBE = VmDirBackendSelect(NULL);
+    beCtx.pBE = pBE;
     dwError = beCtx.pBE->pfnBETxnBegin(&beCtx, VDIR_BACKEND_TXN_WRITE);
     BAIL_ON_VMDIR_ERROR(dwError);
     bHasTxn = TRUE;
@@ -162,6 +163,7 @@ error:
 
 DWORD
 VmDirCustomIndexCfgInit(
+    PVDIR_BACKEND_INTERFACE pBE,
     PVDIR_SCHEMA_AT_DESC    pATDesc,
     PVDIR_INDEX_CFG*        ppIndexCfg
     )
@@ -175,7 +177,7 @@ VmDirCustomIndexCfgInit(
     VDIR_BACKEND_CTX    beCtx = {0};
     BOOLEAN             bHasTxn = FALSE;
 
-    if (!pATDesc || !ppIndexCfg)
+    if (!pBE || !pATDesc || !ppIndexCfg)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -186,7 +188,7 @@ VmDirCustomIndexCfgInit(
 
     pIndexCfg->bIsNumeric = VmDirSchemaAttrIsNumeric(pATDesc);
 
-    beCtx.pBE = VmDirBackendSelect(NULL);
+    beCtx.pBE = pBE;
     dwError = beCtx.pBE->pfnBETxnBegin(&beCtx, VDIR_BACKEND_TXN_WRITE);
     BAIL_ON_VMDIR_ERROR(dwError);
     bHasTxn = TRUE;
@@ -500,12 +502,12 @@ error:
 
 DWORD
 VmDirIndexCfgValidateUniqueScopeMods(
-    PVDIR_INDEX_CFG pIndexCfg
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_CFG         pIndexCfg
     )
 {
     DWORD   dwError = 0;
     int64_t iCnt = 0;
-    PVDIR_BACKEND_INTERFACE pBE = NULL;
     PVDIR_BACKEND_INDEX_ITERATOR  pIterator = NULL;
     PVDIR_LINKED_LIST       pNewScopes = NULL;
     PVDIR_LINKED_LIST       pBadScopes = NULL;
@@ -517,7 +519,7 @@ VmDirIndexCfgValidateUniqueScopeMods(
     VDIR_ENTRY  entry = {0};
     PSTR        pszIdxStatus = NULL;
 
-    if (!pIndexCfg)
+    if (!pBE || !pIndexCfg)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -537,8 +539,7 @@ VmDirIndexCfgValidateUniqueScopeMods(
 
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, pszIdxStatus );
 
-    pBE = VmDirBackendSelect(NULL);
-    dwError = pBE->pfnBEIndexIteratorInit(pIndexCfg, NULL, &pIterator);
+    dwError = pBE->pfnBEIndexIteratorInit(pBE, pIndexCfg, NULL, &pIterator);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     /*
@@ -718,7 +719,8 @@ error:
 
 DWORD
 VmDirIndexCfgRevertBadUniqueScopeMods(
-    PVDIR_INDEX_CFG pIndexCfg
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_CFG         pIndexCfg
     )
 {
     DWORD   dwError = 0;
@@ -727,7 +729,7 @@ VmDirIndexCfgRevertBadUniqueScopeMods(
     PVDIR_LINKED_LIST_NODE  pNode = NULL;
     VDIR_OPERATION  ldapOp = {0};
 
-    if (!pIndexCfg)
+    if (!pBE || !pIndexCfg)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -754,7 +756,7 @@ VmDirIndexCfgRevertBadUniqueScopeMods(
 
     ldapOp.bNoRaftLog = TRUE;
 
-    ldapOp.pBEIF = VmDirBackendSelect(NULL);
+    ldapOp.pBEIF = pBE;
     ldapOp.reqDn.lberbv_val = pszDn;
     ldapOp.reqDn.lberbv_len = VmDirStringLenA(pszDn);
 

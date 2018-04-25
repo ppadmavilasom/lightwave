@@ -113,10 +113,11 @@ error:
  */
 DWORD
 MdbUpdateAttrMetaData(
-    PVDIR_DB_TXN     pTxn,
-    VDIR_ATTRIBUTE * attr,
-    ENTRYID          entryId,
-    ULONG            ulOPMask)
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_DB_TXN            pTxn,
+    VDIR_ATTRIBUTE *        attr,
+    ENTRYID                 entryId,
+    ULONG                   ulOPMask)
 {
     DWORD                 dwError = 0;
     VDIR_DB_DBT           key = {0};
@@ -128,10 +129,14 @@ MdbUpdateAttrMetaData(
     VDIR_BERVALUE         attrMetaDataAttr = { {ATTR_ATTR_META_DATA_LEN, ATTR_ATTR_META_DATA}, 0, 0, NULL };
     unsigned char *       pWriter = NULL;
     PVDIR_INDEX_CFG       pIndexCfg = NULL;
+    VDIR_BACKEND_CTX      beCtx = {0};
 
     if(1)
        return 0;
 
+    assert(pBE);
+
+    beCtx.pBE = pBE;
     // E.g. while deleting a user, and therefore updating the member attribute of the groups to which the user belongs,
     // member attrMetaData of the group object is left unchanged (at least in the current design, SJ-TBD).
     if (ulOPMask == BE_INDEX_OP_TYPE_UPDATE && VmDirStringLenA( attr->metaData ) == 0)
@@ -140,10 +145,13 @@ MdbUpdateAttrMetaData(
     }
 
     dwError = VmDirIndexCfgAcquire(
-            attrMetaDataAttr.lberbv.bv_val, VDIR_INDEX_WRITE, &pIndexCfg);
+                  pBE,
+                  attrMetaDataAttr.lberbv.bv_val,
+                  VDIR_INDEX_WRITE,
+                  &pIndexCfg);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirMDBIndexGetDBi(pIndexCfg, &mdbDBi);
+    dwError = VmDirMDBIndexGetDBi(pBE, pIndexCfg, &mdbDBi);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     indTypes = pIndexCfg->iTypes;
@@ -192,13 +200,14 @@ error:
  */
 DWORD
 MdbUpdateIndicesForAttr(
-    PVDIR_DB_TXN        pTxn,
-    VDIR_BERVALUE *     entryDN,
-    VDIR_BERVALUE *     attrType,
-    VDIR_BERVARRAY      attrVals, // Normalized Attribute Values
-    unsigned            numVals,
-    ENTRYID             entryId,
-    ULONG               ulOPMask
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_DB_TXN            pTxn,
+    VDIR_BERVALUE *         entryDN,
+    VDIR_BERVALUE *         attrType,
+    VDIR_BERVARRAY          attrVals, // Normalized Attribute Values
+    unsigned                numVals,
+    ENTRYID                 entryId,
+    ULONG                   ulOPMask
     )
 {
     DWORD               dwError = 0;
@@ -213,7 +222,10 @@ MdbUpdateIndicesForAttr(
     PVDIR_INDEX_CFG     pIndexCfg = NULL;
 
     dwError = VmDirIndexCfgAcquire(
-            attrType->lberbv.bv_val, VDIR_INDEX_WRITE, &pIndexCfg);
+                  pBE,
+                  attrType->lberbv.bv_val,
+                  VDIR_INDEX_WRITE,
+                  &pIndexCfg);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     if (pIndexCfg)
@@ -224,7 +236,7 @@ MdbUpdateIndicesForAttr(
         indTypes = pIndexCfg->iTypes;
         bIsUniqueVal = pIndexCfg->bGlobalUniq;
 
-        dwError = VmDirMDBIndexGetDBi(pIndexCfg, &mdbDBi);
+        dwError = VmDirMDBIndexGetDBi(pBE, pIndexCfg, &mdbDBi);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         // Calculate required maximum length of the key.
@@ -252,7 +264,7 @@ MdbUpdateIndicesForAttr(
             char*       pNormVal   = BERVAL_NORM_VAL(attrVals[i]);
             ber_len_t   normValLen = BERVAL_NORM_LEN(attrVals[i]);
 
-            dwError = MdbValidateAttrUniqueness(pIndexCfg, pNormVal, pszDN, ulOPMask);
+            dwError = MdbValidateAttrUniqueness(pBE, pIndexCfg, pNormVal, pszDN, ulOPMask);
             BAIL_ON_VMDIR_ERROR( dwError );
 
             key.mv_size = 0;
@@ -314,10 +326,11 @@ error:
 
 DWORD
 MdbValidateAttrUniqueness(
-    PVDIR_INDEX_CFG     pIndexCfg,
-    PSTR                pszAttrVal,
-    PSTR                pszEntryDN,
-    ULONG               ulOPMask
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_CFG         pIndexCfg,
+    PSTR                    pszAttrVal,
+    PSTR                    pszEntryDN,
+    ULONG                   ulOPMask
     )
 {
     DWORD   dwError = 0;
@@ -337,7 +350,7 @@ MdbValidateAttrUniqueness(
     PVMDIR_MUTEX    pMutex = NULL;
     BOOLEAN         bInLock = FALSE;
 
-    if (!pIndexCfg || IsNullOrEmptyString(pszAttrVal))
+    if (!pBE || !pIndexCfg || IsNullOrEmptyString(pszAttrVal))
     {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -366,7 +379,7 @@ MdbValidateAttrUniqueness(
         }
     }
 
-    dwError = VmDirMDBIndexIteratorInit(pIndexCfg, pszAttrVal, &pIterator);
+    dwError = VmDirMDBIndexIteratorInit(pBE, pIndexCfg, pszAttrVal, &pIterator);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     pMutex = pIndexCfg->mutex;
@@ -538,17 +551,20 @@ MDBCreateParentIdIndex(
     PVDIR_INDEX_CFG     pIndexCfg = NULL;
     PSTR                pszLocalErrMsg = NULL;
 
-    assert(pBECtx && pBECtx->pBEPrivate && pdn);
+    assert(pBECtx && pBECtx->pBE && pBECtx->pBEPrivate && pdn);
 
     dwError = VmDirMDBDNToEntryId( pBECtx, pdn, &parentId );
     BAIL_ON_VMDIR_ERROR( dwError );
 
     // Update parentId => entryId index in parentid.db.
     dwError = VmDirIndexCfgAcquire(
-            parentIdAttr.lberbv.bv_val, VDIR_INDEX_WRITE, &pIndexCfg);
+                  pBECtx->pBE,
+                  parentIdAttr.lberbv.bv_val,
+                  VDIR_INDEX_WRITE,
+                  &pIndexCfg);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirMDBIndexGetDBi(pIndexCfg, &mdbDBi);
+    dwError = VmDirMDBIndexGetDBi(pBECtx->pBE, pIndexCfg, &mdbDBi);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     bIsUniqueVal = pIndexCfg->bGlobalUniq;
@@ -608,16 +624,19 @@ MDBDeleteParentIdIndex(
     unsigned char       entryIdBytes[sizeof( ENTRYID )] = {0};
     PVDIR_INDEX_CFG     pIndexCfg = NULL;
 
-    assert(pBECtx && pBECtx->pBEPrivate && pdn);
+    assert(pBECtx && pBECtx->pBE && pBECtx->pBEPrivate && pdn);
 
     dwError = VmDirMDBDNToEntryId( pBECtx, pdn, &parentId );
     BAIL_ON_VMDIR_ERROR( dwError );
 
     dwError = VmDirIndexCfgAcquire(
-            parentIdAttr.lberbv.bv_val, VDIR_INDEX_WRITE, &pIndexCfg);
+                  pBECtx->pBE,
+                  parentIdAttr.lberbv.bv_val,
+                  VDIR_INDEX_WRITE,
+                  &pIndexCfg);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirMDBIndexGetDBi(pIndexCfg, &mdbDBi);
+    dwError = VmDirMDBIndexGetDBi(pBECtx->pBE, pIndexCfg, &mdbDBi);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     bIsUniqueVal = pIndexCfg->bGlobalUniq;
@@ -660,11 +679,13 @@ MDBDeleteEntryBlob(
     VDIR_DB         mdbDBi = 0;
     BOOLEAN         bIsUniqueVal = FALSE;
     unsigned char   eIdBytes[sizeof( ENTRYID )] = {0};
+    PVDIR_MDB_DB pDB = (PVDIR_MDB_DB)VmDirSafeDBFromCtx(pBECtx);
 
-    assert(pBECtx && pBECtx->pBEPrivate);
 
-    mdbDBi = gVdirMdbGlobals.mdbEntryDB.pMdbDataFiles[0].mdbDBi;
-    bIsUniqueVal = gVdirMdbGlobals.mdbEntryDB.pMdbDataFiles[0].bIsUnique;
+    assert(pBECtx && pDB && pBECtx->pBEPrivate);
+
+    mdbDBi = pDB->mdbEntryDB.pMdbDataFiles[0].mdbDBi;
+    bIsUniqueVal = pDB->mdbEntryDB.pMdbDataFiles[0].bIsUnique;
     assert( bIsUniqueVal );
 
     key.mv_data = &eIdBytes[0];
@@ -690,10 +711,11 @@ error:
  */
 DWORD
 MdbCreateEIDIndex(
-    PVDIR_DB_TXN     pTxn,
-    ENTRYID          eId,
-    VDIR_BERVALUE *  pEncodedEntry,
-    BOOLEAN          bIsCreateIndex // Creating a new or updating an existing index recrod.
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_DB_TXN            pTxn,
+    ENTRYID                 eId,
+    VDIR_BERVALUE *         pEncodedEntry,
+    BOOLEAN                 bIsCreateIndex // Creating a new or updating an existing index recrod.
     )
 {
     int             dwError = 0;
@@ -702,11 +724,12 @@ MdbCreateEIDIndex(
     VDIR_DB         mdbDBi = 0;
     BOOLEAN         bIsUniqueVal = FALSE;
     unsigned char   eIdBytes[sizeof( ENTRYID )] = {0};
+    PVDIR_MDB_DB pDB = (PVDIR_MDB_DB)VmDirSafeDBFromBE(pBE);
 
-    assert(pTxn && pEncodedEntry);
+    assert(pTxn && pDB && pEncodedEntry);
 
-    mdbDBi = gVdirMdbGlobals.mdbEntryDB.pMdbDataFiles[0].mdbDBi;
-    bIsUniqueVal = gVdirMdbGlobals.mdbEntryDB.pMdbDataFiles[0].bIsUnique;
+    mdbDBi = pDB->mdbEntryDB.pMdbDataFiles[0].mdbDBi;
+    bIsUniqueVal = pDB->mdbEntryDB.pMdbDataFiles[0].bIsUnique;
     assert( bIsUniqueVal );
 
     key.mv_data = &eIdBytes[0];

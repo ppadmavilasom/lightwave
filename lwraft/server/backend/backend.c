@@ -54,6 +54,180 @@ VmDirFreeUSNList(
     PVDIR_BACKEND_USN_LIST      pUSNList
     );
 
+static
+VOID
+_VmDirFreeBackendInstance(
+    PVDIR_BACKEND_INSTANCE pInstance
+    );
+
+/*
+ * map a dn to a backend
+ * map created here is used in VmDirBackendSelect to switch backends.
+*/
+static
+DWORD
+_VmDirMapDNToBackend(
+    PCSTR pszDN,
+    PVDIR_BACKEND_INTERFACE pBE
+    )
+{
+    DWORD dwError = 0;
+
+    if (IsNullOrEmptyString(pszDN) || !pBE)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
+    }
+
+    /* check if this dn is already mapped */
+    if (LwRtlHashMapFindKey(gVdirBEGlobals.pDNToBEMap, NULL, pszDN) == 0)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_ENTRY_ALREADY_EXIST);
+    }
+
+    dwError = LwRtlHashMapInsert(
+                  gVdirBEGlobals.pDNToBEMap,
+                  (PVOID)pszDN,
+                  pBE,
+                  NULL);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+error:
+    return dwError;
+}
+
+/*
+ * Initialize a database instance.
+ * pszDbPath: Requires path exist on disk. database created on first use.
+*/
+DWORD
+_VmDirInitInstance(
+    PSTR pszDbPath,
+    PVDIR_BACKEND_INSTANCE *ppInstance
+    )
+{
+    DWORD dwError = 0;
+    PVDIR_BACKEND_INSTANCE pNewInstance = NULL;
+
+    if (IsNullOrEmptyString(pszDbPath) || !ppInstance)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
+    }
+
+    /* make sure this database is not yet initialized */
+    if (LwRtlHashMapFindKey(
+            gVdirBEGlobals.pInstanceMap,
+            NULL,
+            pszDbPath) == 0)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, ERROR_ALREADY_INITIALIZED);
+    }
+
+    dwError = VmDirAllocateMemory(
+                  sizeof(VDIR_BACKEND_INSTANCE),
+                  ((PVOID*)&pNewInstance));
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirAllocateStringA(pszDbPath, &pNewInstance->pszDbPath);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirMDBBEInterface(&pNewInstance->pBE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    /* create path to instance entry */
+    dwError = LwRtlHashMapInsert(
+            gVdirBEGlobals.pInstanceMap,
+            pszDbPath,
+            pNewInstance,
+            NULL);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    /* create pBE to instance entry */
+    dwError = LwRtlHashMapInsert(
+            gVdirBEGlobals.pBEToInstanceMap,
+            pNewInstance->pBE,
+            pNewInstance,
+            NULL);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    *ppInstance = pNewInstance;
+
+cleanup:
+    return dwError;
+
+error:
+    _VmDirFreeBackendInstance(pNewInstance);
+
+    goto cleanup;
+}
+
+DWORD
+VmDirIterateInstances(
+    PFN_INIT_INSTANCE_CB pfnCB,
+    PVOID pUserData
+    )
+{
+    DWORD dwError = 0;
+    LW_HASHMAP_ITER iter = LW_HASHMAP_ITER_INIT;
+    LW_HASHMAP_PAIR pair = {NULL, NULL};
+
+    if (!pfnCB)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
+    }
+
+    while (LwRtlHashMapIterate(gVdirBEGlobals.pInstanceMap, &iter, &pair))
+    {
+        dwError = pfnCB((PVDIR_BACKEND_INSTANCE)pair.pValue, pUserData);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+cleanup:
+
+    return dwError;
+
+error:
+
+    goto cleanup;
+}
+
+static
+DWORD
+_VmDirBackendGlobalsInit(
+    VOID
+    )
+{
+    DWORD dwError = 0;
+
+    /* create map from path to db instances */
+    dwError = LwRtlCreateHashMap(
+            &gVdirBEGlobals.pInstanceMap,
+            LwRtlHashDigestPstrCaseless,
+            LwRtlHashEqualPstrCaseless,
+            NULL);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    /* create map from pBE to instance. helps lookups. */
+    dwError = LwRtlCreateHashMap(
+            &gVdirBEGlobals.pBEToInstanceMap,
+            LwRtlHashDigestPointer,
+            LwRtlHashEqualPointer,
+            NULL);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    /* create map from dn to backend. used in select backend */
+    dwError = LwRtlCreateHashMap(
+            &gVdirBEGlobals.pDNToBEMap,
+            LwRtlHashDigestPstrCaseless,
+            LwRtlHashEqualPstrCaseless,
+            NULL);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    gVdirBEGlobals.usnFirstNext = USN_SEQ_INITIAL_VALUE;
+
+error:
+    return dwError;
+}
+
 /*
  * Called during server start up to configure backends(s)
  * Currently, we only support ONE backend.
@@ -64,13 +238,23 @@ VmDirBackendConfig(
 {
     DWORD                   dwError = 0;
     PVDIR_BACKEND_USN_LIST  pUSNList = NULL;
+    PVDIR_BACKEND_INSTANCE  pInstance = NULL;
 
-    gVdirBEGlobals.pszBERootDN = "";
-    gVdirBEGlobals.usnFirstNext = USN_SEQ_INITIAL_VALUE;
-    gVdirBEGlobals.pBE = NULL;
+    /* call once to init global maps */
+    dwError = _VmDirBackendGlobalsInit();
+    BAIL_ON_VMDIR_ERROR(dwError);
 
-    gVdirBEGlobals.pBE = VmDirMDBBEInterface();
+    //Main db
+    dwError = _VmDirInitInstance(LWRAFT_DB_DIR, &pInstance);
+    BAIL_ON_VMDIR_ERROR(dwError);
 
+    gVdirBEGlobals.pBE = pInstance->pBE;
+
+    /* map main db */
+    dwError = _VmDirMapDNToBackend("/", pInstance->pBE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    /* TODO: not applicable for post. remove */
     gVdirBEGlobals.pBE->pfnBEGetLeastOutstandingUSN = VmDirBackendLeastOutstandingUSN;
 
     gVdirBEGlobals.pBE->pfnBEGetHighestCommittedUSN = VmDirBackendHighestCommittedUSN;
@@ -81,8 +265,22 @@ VmDirBackendConfig(
 
     dwError = VmDirAllocateUSNList(&pUSNList);
     BAIL_ON_VMDIR_ERROR(dwError);
+
     gVdirBEGlobals.pBE->pBEUSNList = pUSNList;
     pUSNList = NULL;
+
+#ifdef MULTI_MDB_ENABLED
+
+#define LOG1_DB_DN "cn=v_log1,cn=raftcontext"
+#define LOG1_DB_PATH LWRAFT_DB_DIR"/postlog1"
+
+    dwError = _VmDirInitInstance(LOG1_DB_PATH, &pInstance);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = _VmDirMapDNToBackend(LOG1_DB_DN, pInstance->pBE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+#endif
 
 cleanup:
 
@@ -100,11 +298,63 @@ error:
  */
 PVDIR_BACKEND_INTERFACE
 VmDirBackendSelect(
-    PCSTR   pszDN)
+    PCSTR   pszDN
+    )
 {
-    // only have one backend for now
-    return gVdirBEGlobals.pBE;
+    PVDIR_BACKEND_INTERFACE pBE = gVdirBEGlobals.pBE;
+
+#ifdef MULTI_MDB_ENABLED
+    if (!IsNullOrEmptyString(pszDN))
+    {
+        PVDIR_BACKEND_INTERFACE pNewBE = NULL;
+if(strstr(pszDN, RAFT_CONTEXT_DN))
+{
+    pszDN = "cn=v_log1,cn=raftcontext";
 }
+        LwRtlHashMapFindKey(
+                gVdirBEGlobals.pDNToBEMap,
+                (PVOID*)&pNewBE,
+                pszDN);
+        if (pNewBE)
+        {
+            pBE = pNewBE;
+        }
+    }
+#endif
+
+    return pBE;
+}
+
+DWORD
+VmDirInstanceFromBE(
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_BACKEND_INSTANCE *ppInstance
+    )
+{
+    DWORD dwError = 0;
+    PVDIR_BACKEND_INSTANCE pInstanceFromBE = NULL;
+
+    if (!pBE || !ppInstance)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
+    }
+
+    if (LwRtlHashMapFindKey(
+            gVdirBEGlobals.pBEToInstanceMap,
+            (PVOID*)&pInstanceFromBE,
+            pBE) == 0)
+
+    if (!pInstanceFromBE)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_ENTRY_NOT_FOUND);
+    }
+
+    *ppInstance = pInstanceFromBE;
+
+error:
+    return dwError;
+}
+
 
 VOID
 VmDirBackendContentFree(
@@ -658,4 +908,188 @@ VmDirFreeUSNList(
     }
 
     return;
+}
+
+/*
+  Calls shutdown on backend interface.
+  Free all related resources.
+  Safe to set pBE to NULL after this.
+*/
+static
+VOID
+_VmDirShutdownAndFreeBE(
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_DB_HANDLE hDB
+    )
+{
+    if(pBE)
+    {
+        pBE->pfnBEShutdown(hDB);
+        VmDirBackendContentFree(pBE);
+        VMDIR_SAFE_FREE_MEMORY(pBE);
+    }
+}
+
+static
+VOID
+_VmDirFreeBackendInstance(
+    PVDIR_BACKEND_INSTANCE pInstance
+    )
+{
+    if (pInstance != NULL)
+    {
+        VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s shutdown: %s", __func__, pInstance->pszDbPath);
+        VMDIR_SAFE_FREE_MEMORY(pInstance->pszDbPath);
+        _VmDirShutdownAndFreeBE(pInstance->pBE, pInstance->hDB);
+        pInstance->pBE = NULL;
+        VMDIR_SAFE_FREE_MEMORY(pInstance);
+        VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s shutdown backend complete.", __func__);
+    }
+}
+
+static
+VOID
+_VmDirFreeBackendInstancePair(
+    PLW_HASHMAP_PAIR pPair,
+    LW_PVOID         pUnused
+    )
+{
+    PVDIR_BACKEND_INSTANCE pInstance = (PVDIR_BACKEND_INSTANCE)pPair->pValue;
+    _VmDirFreeBackendInstance(pInstance);
+}
+
+static
+VOID
+_VmDirFreeMapPair(
+    PLW_HASHMAP_PAIR pPair,
+    LW_PVOID         pUnused
+    )
+{
+}
+
+/*
+  Shuts down main db, free and set main db refs to NULL.
+  Shuts down all additional dbs. Free and set instances to NULL.
+*/
+VOID
+VmDirShutdownAndFreeAllBackends(
+    )
+{
+    PVDIR_BACKEND_INSTANCE pMainInstance = NULL;
+
+    /* find main db, so that it can be freed at the end */
+    LwRtlHashMapFindKey(
+        gVdirBEGlobals.pInstanceMap,
+        (PVOID*)&pMainInstance,
+        LWRAFT_DB_DIR);
+
+    /* remove main instance from instance map before iterating */
+    LwRtlHashMapRemove(gVdirBEGlobals.pInstanceMap, LWRAFT_DB_DIR, NULL);
+
+    /* Shutdown and free additional instances */
+    LwRtlHashMapClear(
+        gVdirBEGlobals.pInstanceMap,
+        _VmDirFreeBackendInstancePair,
+        NULL);
+    LwRtlFreeHashMap(&gVdirBEGlobals.pInstanceMap);
+
+    /* Shutdown and free main db */
+    _VmDirFreeBackendInstance(pMainInstance);
+
+    /* lookup map made up of pointers already freed above */
+    LwRtlHashMapClear(gVdirBEGlobals.pBEToInstanceMap, _VmDirFreeMapPair, NULL);
+    LwRtlFreeHashMap(&gVdirBEGlobals.pBEToInstanceMap);
+
+    /* lookup map made up of pointers already freed above */
+    LwRtlHashMapClear(gVdirBEGlobals.pDNToBEMap, _VmDirFreeMapPair, NULL);
+    LwRtlFreeHashMap(&gVdirBEGlobals.pDNToBEMap);
+
+    gVdirBEGlobals.pInstanceMap = NULL;
+    gVdirBEGlobals.pBEToInstanceMap = NULL;
+    gVdirBEGlobals.pDNToBEMap = NULL;
+}
+
+/* helper function to safely return be from ctx */
+PVDIR_BACKEND_INTERFACE
+VmDirSafeBEFromCtx(
+    PVDIR_BACKEND_CTX pBECtx
+    )
+{
+    PVDIR_BACKEND_INTERFACE pBE = NULL;
+
+    if (pBECtx && pBECtx->pBE)
+    {
+        pBE = pBECtx->pBE;
+    }
+
+    return pBE;
+}
+
+/*
+ * helper function to safely return hDB given a pBECtx
+*/
+PVDIR_DB_HANDLE
+VmDirSafeDBFromCtx(
+    PVDIR_BACKEND_CTX pBECtx
+    )
+{
+    PVDIR_DB_HANDLE hDB = NULL;
+
+    if (pBECtx && pBECtx->pBE)
+    {
+        hDB = VmDirSafeDBFromBE(pBECtx->pBE);
+    }
+
+    return hDB;
+}
+
+/*
+ * helper function to safely return hDB from a pBE
+*/
+PVDIR_DB_HANDLE
+VmDirSafeDBFromBE(
+    PVDIR_BACKEND_INTERFACE pBE
+    )
+{
+    PVDIR_DB_HANDLE hDB = NULL;
+
+    if (pBE)
+    {
+        PVDIR_BACKEND_INSTANCE pInstance = NULL;
+        VmDirInstanceFromBE(pBE, &pInstance);
+        if (pInstance)
+        {
+            hDB = pInstance->hDB;
+        }
+    }
+
+    return hDB;
+}
+
+/*
+ * helper function to safely return hDB from path
+*/
+PVDIR_DB_HANDLE
+VmDirSafeDBFromPath(
+    PCSTR pszDbPath
+    )
+{
+    PVDIR_DB_HANDLE hDB = NULL;
+
+    if (!IsNullOrEmptyString(pszDbPath))
+    {
+        PVDIR_BACKEND_INSTANCE pInstance = NULL;
+        if (LwRtlHashMapFindKey(
+            gVdirBEGlobals.pInstanceMap,
+            (PVOID*)&pInstance,
+            pszDbPath) == 0)
+        {
+            if (pInstance)
+            {
+                hDB = pInstance->hDB;
+            }
+        }
+    }
+
+    return hDB;
 }

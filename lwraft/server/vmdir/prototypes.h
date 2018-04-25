@@ -106,7 +106,6 @@ VmDirFreeMemberships(
 
 DWORD
 VmDirLoadIndex(
-    VOID
     );
 
 // init.c

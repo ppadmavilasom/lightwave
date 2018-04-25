@@ -31,10 +31,6 @@ VDIR_INDEX_GLOBALS gVdirIndexGlobals =
     {
         // NOTE: order of fields MUST stay in sync with struct definition...
         VMDIR_SF_INIT(.mutex, NULL),
-        VMDIR_SF_INIT(.cond, NULL),
-        VMDIR_SF_INIT(.pIndexCfgMap, NULL),
-        VMDIR_SF_INIT(.pIndexUpd, NULL),
         VMDIR_SF_INIT(.bFirstboot, FALSE),
-        VMDIR_SF_INIT(.offset, 0),
-        VMDIR_SF_INIT(.pThrInfo, NULL)
+        VMDIR_SF_INIT(.pDBIndexData, NULL)
     };

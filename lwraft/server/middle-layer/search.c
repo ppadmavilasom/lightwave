@@ -749,6 +749,7 @@ BuildCandidateList(
                     BOOLEAN bFoundGlobalUniqIdx = FALSE;
 
                     retVal = VmDirIndexCfgAcquire(
+                            pOperation->pBECtx->pBE,
                             nextFilter->filtComp.ava.type.lberbv.bv_val,
                             VDIR_INDEX_READ,
                             &pIndexCfg);

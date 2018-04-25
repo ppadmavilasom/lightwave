@@ -109,18 +109,21 @@ VmDirIndexLibShutdown(
 
 BOOLEAN
 VmDirIndexIsDefault(
-    PCSTR   pszAttrName
+    PVDIR_BACKEND_INTERFACE pBE,
+    PCSTR                   pszAttrName
     );
 
 DWORD
 VmDirCustomIndexCfgInit(
+    PVDIR_BACKEND_INTERFACE pBE,
     PVDIR_SCHEMA_AT_DESC    pATDesc,
     PVDIR_INDEX_CFG*        ppIndexCfg
     );
 
 DWORD
 VmDirIndexOpen(
-    PVDIR_INDEX_CFG pIndexCfg
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_CFG         pIndexCfg
     );
 
 VOID
@@ -134,9 +137,10 @@ VmDirFreeIndexCfg(
 
 DWORD
 VmDirIndexCfgAcquire(
-    PCSTR               pszAttrName,
-    VDIR_INDEX_USAGE    usage,
-    PVDIR_INDEX_CFG*    ppIndexCfg
+    PVDIR_BACKEND_INTERFACE pBE,
+    PCSTR                   pszAttrName,
+    VDIR_INDEX_USAGE        usage,
+    PVDIR_INDEX_CFG*        ppIndexCfg
     );
 
 VOID
@@ -151,7 +155,8 @@ VmDirIndexExist(
 
 DWORD
 VmDirIndexCfgMap(
-    PLW_HASHMAP*    ppIndexCfgMap
+    PVDIR_BACKEND_INTERFACE pBE,
+    PLW_HASHMAP*            ppIndexCfgMap
     );
 
 DWORD

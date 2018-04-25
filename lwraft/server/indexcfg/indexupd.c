@@ -114,17 +114,29 @@ error:
 
 DWORD
 VmDirIndexUpdApply(
-    PVDIR_INDEX_UPD     pIndexUpd
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd
     )
 {
     DWORD   dwError = 0;
     LW_HASHMAP_ITER iter = LW_HASHMAP_ITER_INIT;
     LW_HASHMAP_PAIR pair = {NULL, NULL};
 
+    if(!pBE)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, ERROR_INVALID_PARAMETER);
+    }
+
     if (pIndexUpd)
     {
-        PLW_HASHMAP pCurCfgMap = gVdirIndexGlobals.pIndexCfgMap;
+        PVDIR_INDEX_DATA pIndexData = NULL;
+        PLW_HASHMAP pCurCfgMap = NULL;
         PLW_HASHMAP pUpdCfgMap = pIndexUpd->pUpdIndexCfgMap;
+
+        dwError = VmDirLookupIndexData(pBE, &pIndexData);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        pCurCfgMap = pIndexData->pIndexCfgMap;
 
         while (LwRtlHashMapIterate(pUpdCfgMap, &iter, &pair))
         {

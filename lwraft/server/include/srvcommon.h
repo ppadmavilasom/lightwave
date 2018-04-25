@@ -1169,6 +1169,25 @@ VmDirSimpleEntryCreateWithGuid(
     );
 
 DWORD
+VmDirSimpleEntryCreateInBE(
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_SCHEMA_CTX        pSchemaCtx,
+    PSTR*                   ppszEntryInitializer,
+    PSTR                    pszDN,
+    ENTRYID                 ulEntryId
+    );
+
+DWORD
+VmDirSimpleEntryCreateInBEWithGuid(
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_SCHEMA_CTX        pSchemaCtx,
+    PSTR*                   ppszEntryInitializer,
+    PSTR                    pszDN,
+    ENTRYID                 ulEntryId,
+    PSTR                    pszGuid
+    );
+
+DWORD
 VmDirModAddSingleValueAttribute(
     PVDIR_MODIFICATION      pMod,
     PVDIR_SCHEMA_CTX        pSchemaCtx,

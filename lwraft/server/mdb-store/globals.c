@@ -29,13 +29,4 @@
 
 #define VMDIR_STRUCT_INIT( a, b, c ) { a, b, c }
 
-VDIR_MDB_GLOBALS gVdirMdbGlobals =
-    {
-        // NOTE: order of fields MUST stay in sync with struct definition...
-        VMDIR_SF_INIT(.mdbEntryDB, {0}),
-        VMDIR_SF_INIT(.mdbIndexDBs, NULL),
-        VMDIR_SF_INIT(.mdbEnv, NULL),
-        VMDIR_SF_INIT(.mdbSeqDBi, 0),
-        VMDIR_SF_INIT(.mdbGenericDupKeyDBi, 0),
-        VMDIR_SF_INIT(.mdbGenericUniqKeyDBi, 0)
-    };
+VDIR_MDB_GLOBALS gVdirMdbGlobals = {0};

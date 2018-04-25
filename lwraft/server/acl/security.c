@@ -174,6 +174,7 @@ VmDirSetRecursiveSecurityDescriptorForDn(
     VDIR_ENTRY_ARRAY entryArray = {0};
     int iCnt = 0;
     PVDIR_BACKEND_INTERFACE pBE = NULL;
+    PVDIR_DB_HANDLE hDB = NULL;
 
     dwError = VmDirFilterInternalSearch(pszObjectDn,
                                         LDAP_SCOPE_SUBTREE,
@@ -184,7 +185,10 @@ VmDirSetRecursiveSecurityDescriptorForDn(
     BAIL_ON_VMDIR_ERROR(dwError);
 
     pBE = VmDirBackendSelect(NULL);
-    dwError = pBE->pfnBEConfigureFsync(FALSE);
+
+    hDB = VmDirSafeDBFromBE(pBE);
+
+    dwError = pBE->pfnBEConfigureFsync(hDB, FALSE);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     for (iCnt = 0; iCnt < entryArray.iSize; iCnt++)
@@ -198,7 +202,7 @@ VmDirSetRecursiveSecurityDescriptorForDn(
     }
 
 cleanup:
-    dwError = pBE->pfnBEConfigureFsync(TRUE);
+    dwError = pBE->pfnBEConfigureFsync(hDB, TRUE);
     VmDirFreeEntryArrayContent(&entryArray);
     return dwError;
 

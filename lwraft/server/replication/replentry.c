@@ -40,8 +40,8 @@ VmDirRaftLogEntryId(unsigned long long LogIndex)
 //Create the initial persistent state
 DWORD
 VmDirInitRaftPsState(
-VOID
-)
+    PVDIR_BACKEND_INTERFACE pBE
+    )
 {
     DWORD dwError = 0;
     PVDIR_SCHEMA_CTX pSchemaCtx = NULL;
@@ -51,16 +51,18 @@ VOID
                         ATTR_CN, RAFT_CONTEXT_CONTAINER_NAME,
                         NULL };
 
+    assert(pBE);
+
     dwError = VmDirSchemaCtxAcquire( &pSchemaCtx );
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirSimpleEntryCreate(pSchemaCtx, ppContex, RAFT_CONTEXT_DN, RAFT_CONTEXT_ENTRY_ID);
+    dwError = VmDirSimpleEntryCreateInBE(pBE, pSchemaCtx, ppContex, RAFT_CONTEXT_DN, RAFT_CONTEXT_ENTRY_ID);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     PSTR ppLogs[] = { ATTR_OBJECT_CLASS,  "vmwDirCfg",
                       ATTR_CN, RAFT_LOGS_CONTAINER_NAME,
                       NULL };
-    dwError = VmDirSimpleEntryCreate(pSchemaCtx, ppLogs, RAFT_LOGS_CONTAINER_DN, RAFT_LOGS_CONTAINER_ENTRY_ID);
+    dwError = VmDirSimpleEntryCreateInBE(pBE, pSchemaCtx, ppLogs, RAFT_LOGS_CONTAINER_DN, RAFT_LOGS_CONTAINER_ENTRY_ID);
     BAIL_ON_VMDIR_ERROR(dwError);
 
 
@@ -71,7 +73,7 @@ VOID
                                ATTR_RAFT_TERM, "1",
                                ATTR_RAFT_VOTEDFOR_TERM, "0",
                                NULL };
-    dwError = VmDirSimpleEntryCreate(pSchemaCtx, ppPersisteState, RAFT_PERSIST_STATE_DN, RAFT_PERSIST_STATE_ENTRY_ID);
+    dwError = VmDirSimpleEntryCreateInBE(pBE, pSchemaCtx, ppPersisteState, RAFT_PERSIST_STATE_DN, RAFT_PERSIST_STATE_ENTRY_ID);
     BAIL_ON_VMDIR_ERROR(dwError);
 
 cleanup:
@@ -155,6 +157,10 @@ _VmDirLoadRaftState(
     dwError = _VmDirGetLastIndex(&gRaftState.lastLogIndex, &gRaftState.lastLogTerm);
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    /* LOGSEP HACK - dont check in */
+    gRaftState.commitIndex = gRaftState.lastLogIndex;
+    gRaftState.lastApplied = gRaftState.commitIndex;
+
     gRaftState.initialized = TRUE;
 
 cleanup:
@@ -192,6 +198,8 @@ VmDirAddRaftEntry(PVDIR_SCHEMA_CTX pSchemaCtx, PVDIR_RAFT_LOG pLogEntry, PVDIR_O
     char objectGuidStr[VMDIR_GUID_STR_LEN];
     VDIR_BERVALUE bvIndexApplied = VDIR_BERVALUE_INIT;
     uuid_t guid;
+    VDIR_BACKEND_CTX beCtx = {0};
+    BOOLEAN bHasTxn = FALSE;
 
     VMDIR_LOG_DEBUG(LDAP_DEBUG_REPL, "VmDirAddRaftEntry: log index %llu", pLogEntry->index);
 
@@ -235,7 +243,16 @@ VmDirAddRaftEntry(PVDIR_SCHEMA_CTX pSchemaCtx, PVDIR_RAFT_LOG pLogEntry, PVDIR_O
     BAIL_ON_VMDIR_ERROR(dwError);
 
     raftEntry.eId = VmDirRaftLogEntryId(pLogEntry->index);
-    dwError = pOp->pBEIF->pfnBEEntryAdd(pOp->pBECtx, &raftEntry);
+
+    beCtx.pBE = VmDirBackendSelect(RAFT_CONTEXT_DN);
+
+    dwError = beCtx.pBE->pfnBETxnBegin(&beCtx, VDIR_BACKEND_TXN_WRITE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = beCtx.pBE->pfnBEEntryAdd(&beCtx, &raftEntry);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = beCtx.pBE->pfnBETxnCommit(&beCtx);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirCloneStackOperation(pOp, &modOp, VDIR_OPERATION_TYPE_INTERNAL, LDAP_REQ_MODIFY, NULL);
@@ -254,6 +271,11 @@ VmDirAddRaftEntry(PVDIR_SCHEMA_CTX pSchemaCtx, PVDIR_RAFT_LOG pLogEntry, PVDIR_O
     BAIL_ON_VMDIR_ERROR(dwError);
 
 cleanup:
+    if (bHasTxn)
+    {
+        beCtx.pBE->pfnBETxnAbort(&beCtx);
+    }
+    VmDirBackendCtxContentFree(&beCtx);
     if (modOp.pBECtx)
     {
         modOp.pBECtx->pBEPrivate = NULL; //Make sure that calls commit/abort only once.

@@ -150,6 +150,7 @@ VmDirPatchLocalSchemaObjects(
     PVDIR_LDAP_SCHEMA_DIFF  pSchemaDiff = NULL;
     PVDIR_LINKED_LIST_NODE  pNode = NULL;
     VDIR_BACKEND_CTX    beCtx = {0};
+    PVDIR_DB_HANDLE hDB = NULL;
 
     if (!pNewCtx)
     {
@@ -165,7 +166,10 @@ VmDirPatchLocalSchemaObjects(
 
     beCtx.pBE = VmDirBackendSelect(NULL);
 
-    dwError = beCtx.pBE->pfnBEConfigureFsync(FALSE);
+    hDB = VmDirSafeDBFromCtx(&beCtx);
+    assert(hDB);
+
+    dwError = beCtx.pBE->pfnBEConfigureFsync(hDB, FALSE);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     pNode = pSchemaDiff->attrToAdd->pHead;
@@ -210,6 +214,9 @@ VmDirPatchLocalSchemaObjects(
 
 error:
     VmDirFreeLdapSchemaDiff(pSchemaDiff);
-    dwError = beCtx.pBE->pfnBEConfigureFsync(TRUE);
+    if (beCtx.pBE && hDB)
+    {
+        dwError = beCtx.pBE->pfnBEConfigureFsync(hDB, TRUE);
+    }
     return dwError;
 }

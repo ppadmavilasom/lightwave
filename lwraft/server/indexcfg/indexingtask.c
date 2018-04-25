@@ -57,52 +57,60 @@ error:
 
 DWORD
 VmDirIndexingTaskCompute(
+    PVDIR_BACKEND_INTERFACE pBE,
     PVDIR_INDEXING_TASK*    ppTask
     )
 {
     DWORD   dwError = 0;
     ENTRYID maxEId = 0;
-    PVDIR_BACKEND_INTERFACE pBE = NULL;
     PVDIR_INDEXING_TASK     pTask = NULL;
 
     LW_HASHMAP_ITER iter = LW_HASHMAP_ITER_INIT;
     LW_HASHMAP_PAIR pair = {NULL, NULL};
     PVDIR_INDEX_CFG pIndexCfg = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+    VDIR_BACKEND_CTX beCtx = {0};
 
-    if (!ppTask)
+    if (!pBE || !ppTask)
     {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
     // compute offset for new task
-    pBE = VmDirBackendSelect(NULL);
-    if (gVdirIndexGlobals.offset < NEW_ENTRY_EID_PREFIX)
+    beCtx.pBE = pBE;
+
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (pIndexData->offset < NEW_ENTRY_EID_PREFIX)
     {
-        gVdirIndexGlobals.offset = NEW_ENTRY_EID_PREFIX;
+        pIndexData->offset = NEW_ENTRY_EID_PREFIX;
     }
     else
     {
-        dwError = pBE->pfnBEMaxEntryId(&maxEId);
+        PVDIR_DB_HANDLE hDB = VmDirSafeDBFromBE(pBE);
+
+        dwError = pBE->pfnBEMaxEntryId(hDB, &maxEId);
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        gVdirIndexGlobals.offset += INDEXING_BATCH_SIZE;
-        if (gVdirIndexGlobals.offset > maxEId)
+        pIndexData->offset += INDEXING_BATCH_SIZE;
+        if (pIndexData->offset > maxEId)
         {
-            gVdirIndexGlobals.offset = NEW_ENTRY_EID_PREFIX;
+            pIndexData->offset = NEW_ENTRY_EID_PREFIX;
         }
     }
 
     dwError = VmDirIndexingTaskInit(&pTask);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    while (LwRtlHashMapIterate(gVdirIndexGlobals.pIndexCfgMap, &iter, &pair))
+    while (LwRtlHashMapIterate(pIndexData->pIndexCfgMap, &iter, &pair))
     {
         pIndexCfg = (PVDIR_INDEX_CFG)pair.pValue;
         if (pIndexCfg->status == VDIR_INDEXING_SCHEDULED)
         {
             pIndexCfg->status = VDIR_INDEXING_IN_PROGRESS;
-            pIndexCfg->initOffset =  gVdirIndexGlobals.offset;
+            pIndexCfg->initOffset =  pIndexData->offset;
 
             dwError = VmDirLinkedListInsertHead(
                     pTask->pIndicesToPopulate, pIndexCfg, NULL);
@@ -110,7 +118,7 @@ VmDirIndexingTaskCompute(
         }
         else if (pIndexCfg->status == VDIR_INDEXING_IN_PROGRESS)
         {
-            if (pIndexCfg->initOffset ==  gVdirIndexGlobals.offset)
+            if (pIndexCfg->initOffset ==  pIndexData->offset)
             {
                 pIndexCfg->status = VDIR_INDEXING_VALIDATING_SCOPES;
 
@@ -188,21 +196,26 @@ error:
 
 DWORD
 VmDirIndexingTaskPopulateIndices(
+    PVDIR_BACKEND_INTERFACE pBE,
     PVDIR_INDEXING_TASK pTask
     )
 {
     DWORD   dwError = 0;
     PVDIR_LINKED_LIST_NODE  pNode = NULL;
-    PVDIR_BACKEND_INTERFACE pBE = NULL;
+    VDIR_BACKEND_CTX beCtx = {0};
     PLW_HASHMAP pIndexCfgs  = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
 
-    if (!pTask)
+    if (!pBE || !pTask)
     {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    pBE = VmDirBackendSelect(NULL);
+    beCtx.pBE = pBE;
+
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = LwRtlCreateHashMap(
             &pIndexCfgs,
@@ -217,10 +230,10 @@ VmDirIndexingTaskPopulateIndices(
         PVDIR_INDEX_CFG pIndexCfg = (PVDIR_INDEX_CFG)pNode->pElement;
 
         // open index db first if it's new
-        if (pIndexCfg->initOffset == gVdirIndexGlobals.offset &&
-                !pBE->pfnBEIndexExist(pIndexCfg))
+        if (pIndexCfg->initOffset == pIndexData->offset &&
+                !pBE->pfnBEIndexExist(pBE, pIndexCfg))
         {
-            dwError = pBE->pfnBEIndexOpen(pIndexCfg);
+            dwError = pBE->pfnBEIndexOpen(pBE, pIndexCfg);
             BAIL_ON_VMDIR_ERROR(dwError);
         }
 
@@ -232,7 +245,10 @@ VmDirIndexingTaskPopulateIndices(
     }
 
     dwError = pBE->pfnBEIndexPopulate(
-            pIndexCfgs,  gVdirIndexGlobals.offset, INDEXING_BATCH_SIZE);
+                  pBE,
+                  pIndexCfgs,
+                  pIndexData->offset,
+                  INDEXING_BATCH_SIZE);
     BAIL_ON_VMDIR_ERROR(dwError);
 
 cleanup:
@@ -256,13 +272,14 @@ error:
 
 DWORD
 VmDirIndexingTaskValidateScopes(
-    PVDIR_INDEXING_TASK pTask
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEXING_TASK     pTask
     )
 {
     DWORD   dwError = 0;
     PVDIR_LINKED_LIST_NODE  pNode = NULL;
 
-    if (!pTask)
+    if (pBE || !pTask)
     {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -273,13 +290,13 @@ VmDirIndexingTaskValidateScopes(
     {
         PVDIR_INDEX_CFG pIndexCfg = (PVDIR_INDEX_CFG)pNode->pElement;
 
-        dwError = VmDirIndexCfgValidateUniqueScopeMods(pIndexCfg);
+        dwError = VmDirIndexCfgValidateUniqueScopeMods(pBE, pIndexCfg);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         dwError = VmDirIndexCfgApplyUniqueScopeMods(pIndexCfg);
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        dwError = VmDirIndexCfgRevertBadUniqueScopeMods(pIndexCfg);
+        dwError = VmDirIndexCfgRevertBadUniqueScopeMods(pBE, pIndexCfg);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         pNode = pNode->pNext;
@@ -304,20 +321,19 @@ error:
 
 DWORD
 VmDirIndexingTaskDeleteIndices(
-    PVDIR_INDEXING_TASK pTask
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEXING_TASK     pTask
     )
 {
     DWORD   dwError = 0;
-    PVDIR_BACKEND_INTERFACE pBE = NULL;
     PVDIR_LINKED_LIST_NODE  pNode = NULL;
 
-    if (!pTask)
+    if (!pBE || !pTask)
     {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    pBE = VmDirBackendSelect(NULL);
     pNode = pTask->pIndicesToDelete->pTail;
     while (pNode)
     {
@@ -326,7 +342,7 @@ VmDirIndexingTaskDeleteIndices(
         // in case of resume, it may be already deleted
         if (pIndexCfg->status == VDIR_INDEXING_DISABLED)
         {
-            dwError = pBE->pfnBEIndexDelete(pIndexCfg);
+            dwError = pBE->pfnBEIndexDelete(pBE, pIndexCfg);
             BAIL_ON_VMDIR_ERROR(dwError);
 
             pIndexCfg->status = VDIR_INDEXING_DELETED;
@@ -355,8 +371,9 @@ error:
 
 DWORD
 VmDirIndexingTaskRecordProgress(
-    PVDIR_INDEXING_TASK pTask,
-    PVDIR_INDEX_UPD     pIndexUpd
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEXING_TASK     pTask,
+    PVDIR_INDEX_UPD         pIndexUpd
     )
 {
     DWORD   dwError = 0;
@@ -366,6 +383,9 @@ VmDirIndexingTaskRecordProgress(
     PLW_HASHMAP             pUpdCfgMap = NULL;
     PVDIR_LINKED_LIST_NODE  pNode = NULL;
     PSTR                    pszStatus = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+
+    assert(pBE);
 
     if (VmDirIndexingTaskIsNoop(pTask))
     {
@@ -380,14 +400,18 @@ VmDirIndexingTaskRecordProgress(
         pUpdCfgMap = pIndexUpd->pUpdIndexCfgMap;
     }
 
-    beCtx.pBE = VmDirBackendSelect(NULL);
+    beCtx.pBE = pBE;
+
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
     dwError = beCtx.pBE->pfnBETxnBegin(&beCtx, VDIR_BACKEND_TXN_WRITE);
     BAIL_ON_VMDIR_ERROR(dwError);
     bHasTxn = TRUE;
 
     // record offset to continue from in case of restart
     dwError = VmDirAllocateStringPrintf(
-            &pszOffset, "%u",  gVdirIndexGlobals.offset);
+            &pszOffset, "%u",  pIndexData->offset);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = beCtx.pBE->pfnBEUniqKeySetValue(
@@ -409,7 +433,7 @@ VmDirIndexingTaskRecordProgress(
         }
 
         // log populate progress every 10000
-        if (gVdirIndexGlobals.offset % 10000 == 0 &&
+        if (pIndexData->offset % 10000 == 0 &&
             (!pUpdCfg || pUpdCfg->status == VDIR_INDEXING_IN_PROGRESS))
         {
             VMDIR_SAFE_FREE_MEMORY(pszStatus);
@@ -417,7 +441,7 @@ VmDirIndexingTaskRecordProgress(
             BAIL_ON_VMDIR_ERROR(dwError);
 
             VMDIR_LOG_INFO( LDAP_DEBUG_INDEX,
-                    "%s (%ld)", pszStatus, gVdirIndexGlobals.offset );
+                    "%s (%ld)", pszStatus, pIndexData->offset );
         }
 
         pNode = pNode->pNext;

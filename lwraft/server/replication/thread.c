@@ -32,7 +32,7 @@
 extern DWORD AttrListToEntry(PVDIR_SCHEMA_CTX, PSTR, PSTR*, PVDIR_ENTRY);
 extern DWORD VmDirAddModSingleAttributeReplace(PVDIR_OPERATION, PCSTR, PCSTR, PVDIR_BERVALUE);
 extern DWORD VmDirCloneStackOperation(PVDIR_OPERATION, PVDIR_OPERATION, VDIR_OPERATION_TYPE, ber_tag_t, PVDIR_SCHEMA_CTX);
-extern int VmDirEntryAttrValueNormalize(PVDIR_ENTRY, BOOLEAN);
+extern int VmDirEntryAttrValueNormalize(PVDIR_BACKEND_CTX, PVDIR_ENTRY, BOOLEAN);
 extern DWORD VmDirSyncCounterReset(PVMDIR_SYNCHRONIZE_COUNTER pSyncCounter, int syncValue);
 extern DWORD VmDirConditionBroadcast(PVMDIR_COND pCondition);
 static DWORD _VmDirAppendEntriesRpc(PVMDIR_PEER_PROXY pProxySelf, int);
@@ -472,7 +472,7 @@ _VmDirEvaluateVoteResult(UINT64 *waitTime)
     dwError = VmDirInitStackOperation(&ldapOp, VDIR_OPERATION_TYPE_REPL, LDAP_REQ_MODIFY, pSchemaCtx );
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    ldapOp.pBEIF = VmDirBackendSelect(NULL);
+    ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
     assert(ldapOp.pBEIF);
 
     //Once returned successfully, it would block any other write transactions
@@ -2306,10 +2306,10 @@ _VmDirApplyLog(unsigned long long indexToApply)
         VmDirFreeEntry(ldapOp.request.addReq.pEntry);
         ldapOp.request.addReq.pEntry = &entry;
 
-        ldapOp.pBEIF = VmDirBackendSelect(NULL);
+        ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
         assert(ldapOp.pBEIF);
 
-        dwError = VmDirEntryAttrValueNormalize(&entry, FALSE /*all attributes*/);
+        dwError = VmDirEntryAttrValueNormalize(ldapOp.pBECtx, &entry, FALSE /*all attributes*/);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         dwError = VmDirSchemaModMutexAcquire(&ldapOp);
@@ -2336,7 +2336,7 @@ _VmDirApplyLog(unsigned long long indexToApply)
         dwError = VmDirInitStackOperation( &ldapOp, VDIR_OPERATION_TYPE_REPL, LDAP_REQ_MODIFY, pSchemaCtx );
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        ldapOp.pBEIF = VmDirBackendSelect(NULL);
+        ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
         assert(ldapOp.pBEIF);
 
         modReq = &(ldapOp.request.modifyReq);
@@ -2379,7 +2379,7 @@ _VmDirApplyLog(unsigned long long indexToApply)
         dwError = VmDirInitStackOperation( &ldapOp, VDIR_OPERATION_TYPE_REPL, LDAP_REQ_DELETE, pSchemaCtx );
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        ldapOp.pBEIF = VmDirBackendSelect(NULL);
+        ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
         assert(ldapOp.pBEIF);
 
         dwError = ldapOp.pBEIF->pfnBETxnBegin(ldapOp.pBECtx, VDIR_BACKEND_TXN_WRITE);
@@ -3093,7 +3093,7 @@ _VmdirDeleteLog(unsigned long long logIndex, BOOLEAN bCompactLog)
     dwError = VmDirInitStackOperation( &ldapOp, VDIR_OPERATION_TYPE_INTERNAL, LDAP_REQ_DELETE, pSchemaCtx );
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    ldapOp.pBEIF = VmDirBackendSelect(NULL);
+    ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
     assert(ldapOp.pBEIF);
 
     dwError = VmDirAllocateStringPrintf(&pDn, "%s=%llu,%s", ATTR_CN, logIndex, RAFT_LOGS_CONTAINER_DN);
@@ -3174,7 +3174,7 @@ VmDirPersistTerm(
     dwError = VmDirInitStackOperation( &ldapOp, VDIR_OPERATION_TYPE_INTERNAL, LDAP_REQ_MODIFY, pSchemaCtx );
     BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pszLocalErrorMsg), "VmDirInitStackOperation");
 
-    ldapOp.pBEIF = VmDirBackendSelect(NULL);
+    ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
     assert(ldapOp.pBEIF);
 
     if (term > 0)

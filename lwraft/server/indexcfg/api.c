@@ -15,14 +15,47 @@
 #include "includes.h"
 
 DWORD
+VmDirLookupIndexData(
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_DATA        *ppIndexData
+    )
+{
+    DWORD dwError = 0;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+
+    if (!pBE || !ppIndexData)
+    {
+        dwError = VMDIR_ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    /* find index data */
+    if (LwRtlHashMapFindKey(
+            gVdirIndexGlobals.pDBIndexData,
+            (PVOID *)&pIndexData,
+            pBE))
+    {
+        dwError = VMDIR_ERROR_NOT_FOUND;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    *ppIndexData = pIndexData;
+
+error:
+    return dwError;
+}
+
+DWORD
 VmDirIndexCfgMap(
-    PLW_HASHMAP*    ppIndexCfgMap
+    PVDIR_BACKEND_INTERFACE pBE,
+    PLW_HASHMAP*            ppIndexCfgMap
     )
 {
     DWORD   dwError = 0;
+    PVDIR_INDEX_DATA pIndexData = NULL;
     VDIR_SERVER_STATE   vmdirState = VmDirdState();
 
-    if (!ppIndexCfgMap)
+    if (!pBE || !ppIndexCfgMap)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -34,7 +67,10 @@ VmDirIndexCfgMap(
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    *ppIndexCfgMap = gVdirIndexGlobals.pIndexCfgMap;
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    *ppIndexCfgMap = pIndexData->pIndexCfgMap;
 
 error:
     return dwError;
@@ -42,17 +78,21 @@ error:
 
 DWORD
 VmDirIndexCfgAcquire(
-    PCSTR               pszAttrName,
-    VDIR_INDEX_USAGE    usage,
-    PVDIR_INDEX_CFG*    ppIndexCfg
+    PVDIR_BACKEND_INTERFACE pBE,
+    PCSTR                   pszAttrName,
+    VDIR_INDEX_USAGE        usage,
+    PVDIR_INDEX_CFG*        ppIndexCfg
     )
 {
     DWORD   dwError = 0;
     BOOLEAN bInLock = FALSE;
     PVDIR_INDEX_CFG pIndexCfg = NULL;
     PVMDIR_MUTEX    pMutex = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
 
-    if (IsNullOrEmptyString(pszAttrName) || !ppIndexCfg)
+    if (!pBE ||
+        IsNullOrEmptyString(pszAttrName) ||
+        !ppIndexCfg)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -60,8 +100,11 @@ VmDirIndexCfgAcquire(
 
     *ppIndexCfg = NULL;
 
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
     if (LwRtlHashMapFindKey(
-            gVdirIndexGlobals.pIndexCfgMap, (PVOID*)&pIndexCfg, pszAttrName))
+            pIndexData->pIndexCfgMap, (PVOID*)&pIndexCfg, pszAttrName))
     {
         goto cleanup;
     }
@@ -125,14 +168,20 @@ VmDirIndexExist(
     PCSTR   pszAttrName
     )
 {
+    DWORD dwError = 0;
     BOOLEAN bExist = TRUE;
     PLW_HASHMAP pCurMap = NULL;
     PLW_HASHMAP pUpdMap = NULL;
     PVDIR_INDEX_CFG pIndexCfg = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
-    pCurMap = gVdirIndexGlobals.pIndexCfgMap;
-    pUpdMap = gVdirIndexGlobals.pIndexUpd ?
-            gVdirIndexGlobals.pIndexUpd->pUpdIndexCfgMap : NULL;
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    pCurMap = pIndexData->pIndexCfgMap;
+    pUpdMap = pIndexData->pIndexUpd ?
+            pIndexData->pIndexUpd->pUpdIndexCfgMap : NULL;
 
     if (IsNullOrEmptyString(pszAttrName))
     {
@@ -156,27 +205,44 @@ VmDirIndexExist(
         }
     }
 
+cleanup:
     return bExist;
+
+error:
+    bExist = FALSE;
+    goto cleanup;
 }
 
 BOOLEAN
 VmDirIndexIsDefault(
-    PCSTR   pszAttrName
+    PVDIR_BACKEND_INTERFACE pBE,
+    PCSTR                   pszAttrName
     )
 {
+    DWORD dwError = 0;
     BOOLEAN bIsDefault = FALSE;
     PVDIR_INDEX_CFG pIndexCfg = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
 
     if (!IsNullOrEmptyString(pszAttrName) &&
             LwRtlHashMapFindKey(
-                    gVdirIndexGlobals.pIndexCfgMap,
+                    pIndexData->pIndexCfgMap,
                     (PVOID*)&pIndexCfg,
                     pszAttrName) == 0)
     {
         bIsDefault = pIndexCfg->bDefaultIndex;
     }
 
+cleanup:
     return bIsDefault;
+
+error:
+    bIsDefault = FALSE;
+    goto cleanup;
 }
 
 /*
@@ -191,23 +257,33 @@ VmDirIndexUpdateBegin(
 {
     DWORD   dwError = 0;
     PVDIR_INDEX_UPD pIndexUpd = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+    PVDIR_BACKEND_INTERFACE pBE = VmDirSafeBEFromCtx(pBECtx);
 
-    if (!ppIndexUpd)
+    if(!pBE)
+    {
+        pBE = VmDirBackendSelect(NULL);
+    }
+
+    if (!pBE || !ppIndexUpd)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
     dwError = VmDirIndexUpdInit(pBECtx, &pIndexUpd);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirIndexUpdCopy(gVdirIndexGlobals.pIndexUpd, pIndexUpd);
+    dwError = VmDirIndexUpdCopy(pIndexData->pIndexUpd, pIndexUpd);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     if (pIndexUpd->bOwnBECtx)
     {
-        PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
-        pIndexUpd->pBECtx->pBE = pBE;
+        PVDIR_BACKEND_INTERFACE pBE = pIndexUpd->pBECtx->pBE;
+        assert(pBE);
 
         dwError = pBE->pfnBETxnBegin(pIndexUpd->pBECtx, VDIR_BACKEND_TXN_WRITE);
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -238,12 +314,17 @@ VmDirIndexUpdateCommit(
     LW_HASHMAP_ITER iter = LW_HASHMAP_ITER_INIT;
     LW_HASHMAP_PAIR pair = {NULL, NULL};
     PSTR            pszStatus = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
     if (!pIndexUpd)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
     }
+
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
 
     while (LwRtlHashMapIterate(pIndexUpd->pUpdIndexCfgMap, &iter, &pair))
     {
@@ -268,10 +349,10 @@ VmDirIndexUpdateCommit(
         pIndexUpd->bHasBETxn = FALSE;
     }
 
-    VmDirIndexUpdFree(gVdirIndexGlobals.pIndexUpd);
-    gVdirIndexGlobals.pIndexUpd = pIndexUpd;
+    VmDirIndexUpdFree(pIndexData->pIndexUpd);
+    pIndexData->pIndexUpd = pIndexUpd;
 
-    VmDirConditionSignal(gVdirIndexGlobals.cond);
+    VmDirConditionSignal(pIndexData->cond);
 
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s succeeded", __FUNCTION__ );
 
@@ -334,6 +415,8 @@ VmDirIndexSchedule(
     PVDIR_INDEX_CFG pCurCfg = NULL;
     PVDIR_INDEX_CFG pUpdCfg = NULL;
     PVDIR_INDEX_CFG pNewCfg = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
     if (!pIndexUpd || IsNullOrEmptyString(pszAttrName))
     {
@@ -341,7 +424,10 @@ VmDirIndexSchedule(
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    pCurCfgMap = gVdirIndexGlobals.pIndexCfgMap;
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    pCurCfgMap = pIndexData->pIndexCfgMap;
     pUpdCfgMap = pIndexUpd->pUpdIndexCfgMap;
 
     (VOID)LwRtlHashMapFindKey(pCurCfgMap, (PVOID*)&pCurCfg, pszAttrName);
@@ -409,6 +495,8 @@ VmDirIndexDelete(
     PVDIR_INDEX_CFG pCurCfg = NULL;
     PVDIR_INDEX_CFG pUpdCfg = NULL;
     PVDIR_INDEX_CFG pNewCfg = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
     if (!pIndexUpd || IsNullOrEmptyString(pszAttrName))
     {
@@ -416,7 +504,10 @@ VmDirIndexDelete(
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    pCurCfgMap = gVdirIndexGlobals.pIndexCfgMap;
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    pCurCfgMap = pIndexData->pIndexCfgMap;
     pUpdCfgMap = pIndexUpd->pUpdIndexCfgMap;
 
     (VOID)LwRtlHashMapFindKey(pCurCfgMap, (PVOID*)&pCurCfg, pszAttrName);
@@ -473,6 +564,8 @@ VmDirIndexAddUniquenessScope(
     PVDIR_INDEX_CFG pCurCfg = NULL;
     PVDIR_INDEX_CFG pUpdCfg = NULL;
     PVDIR_INDEX_CFG pNewCfg = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
     if (!pIndexUpd || IsNullOrEmptyString(pszAttrName) || !ppszUniqScopes)
     {
@@ -480,7 +573,10 @@ VmDirIndexAddUniquenessScope(
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    pCurCfgMap = gVdirIndexGlobals.pIndexCfgMap;
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    pCurCfgMap = pIndexData->pIndexCfgMap;
     pUpdCfgMap = pIndexUpd->pUpdIndexCfgMap;
 
     (VOID)LwRtlHashMapFindKey(pCurCfgMap, (PVOID*)&pCurCfg, pszAttrName);
@@ -542,6 +638,8 @@ VmDirIndexDeleteUniquenessScope(
     PVDIR_INDEX_CFG pCurCfg = NULL;
     PVDIR_INDEX_CFG pUpdCfg = NULL;
     PVDIR_INDEX_CFG pNewCfg = NULL;
+    PVDIR_INDEX_DATA pIndexData = NULL;
+    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
     if (!pIndexUpd || IsNullOrEmptyString(pszAttrName) || !ppszUniqScopes)
     {
@@ -549,7 +647,10 @@ VmDirIndexDeleteUniquenessScope(
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    pCurCfgMap = gVdirIndexGlobals.pIndexCfgMap;
+    dwError = VmDirLookupIndexData(pBE, &pIndexData);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    pCurCfgMap = pIndexData->pIndexCfgMap;
     pUpdCfgMap = pIndexUpd->pUpdIndexCfgMap;
 
     (VOID)LwRtlHashMapFindKey(pCurCfgMap, (PVOID*)&pCurCfg, pszAttrName);

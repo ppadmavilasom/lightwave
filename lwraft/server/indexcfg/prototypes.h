@@ -41,6 +41,7 @@ VmDirIndexCfgCreate(
 
 DWORD
 VmDirDefaultIndexCfgInit(
+    PVDIR_BACKEND_INTERFACE pBE,
     PVDIR_DEFAULT_INDEX_CFG pDefIdxCfg,
     PVDIR_INDEX_CFG*        ppIndexCfg
     );
@@ -65,7 +66,8 @@ VmDirIndexCfgDeleteUniqueScopeMod(
 
 DWORD
 VmDirIndexCfgValidateUniqueScopeMods(
-    PVDIR_INDEX_CFG pIndexCfg
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_CFG         pIndexCfg
     );
 
 DWORD
@@ -75,7 +77,8 @@ VmDirIndexCfgApplyUniqueScopeMods(
 
 DWORD
 VmDirIndexCfgRevertBadUniqueScopeMods(
-    PVDIR_INDEX_CFG pIndexCfg
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_CFG         pIndexCfg
     );
 
 DWORD
@@ -103,28 +106,33 @@ VmDirIndexingTaskInit(
 
 DWORD
 VmDirIndexingTaskCompute(
+    PVDIR_BACKEND_INTERFACE pBE,
     PVDIR_INDEXING_TASK*    ppTask
     );
 
 DWORD
 VmDirIndexingTaskPopulateIndices(
+    PVDIR_BACKEND_INTERFACE pBE,
     PVDIR_INDEXING_TASK pTask
     );
 
 DWORD
 VmDirIndexingTaskValidateScopes(
-    PVDIR_INDEXING_TASK pTask
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEXING_TASK     pTask
     );
 
 DWORD
 VmDirIndexingTaskDeleteIndices(
+    PVDIR_BACKEND_INTERFACE pBE,
     PVDIR_INDEXING_TASK pTask
     );
 
 DWORD
 VmDirIndexingTaskRecordProgress(
-    PVDIR_INDEXING_TASK pTask,
-    PVDIR_INDEX_UPD     pIndexUpd
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEXING_TASK     pTask,
+    PVDIR_INDEX_UPD         pIndexUpd
     );
 
 BOOLEAN
@@ -140,7 +148,7 @@ VmDirFreeIndexingTask(
 // indexingthr.c
 DWORD
 InitializeIndexingThread(
-    VOID
+    PVDIR_INDEX_DATA pIndexData
     );
 
 DWORD
@@ -163,7 +171,8 @@ VmDirIndexUpdCopy(
 
 DWORD
 VmDirIndexUpdApply(
-    PVDIR_INDEX_UPD     pIndexUpd
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd
     );
 
 VOID
@@ -183,6 +192,12 @@ VmDirIndexCfgRestoreProgress(
     PVDIR_BACKEND_CTX   pBECtx,
     PVDIR_INDEX_CFG     pIndexCfg,
     PBOOLEAN            pbRestore
+    );
+
+DWORD
+VmDirLookupIndexData(
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_DATA        *ppIndexData
     );
 
 #ifdef __cplusplus

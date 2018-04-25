@@ -13,7 +13,7 @@ if [[ $ARG == "" || $ARG == "--with-ui" ]]; then
   autoreconf -vif .. \
   && \
   ../configure \
-    CFLAGS="-Wall -Werror -Wno-unused-but-set-variable -Wno-pointer-sign -Wno-implicit-function-declaration -Wno-address -Wno-enum-compare" \
+    CFLAGS="-Wall -Werror -Wno-unused-but-set-variable -Wno-pointer-sign -Wno-implicit-function-declaration -Wno-address -Wno-enum-compare -g -O0 -DMULTI_MDB_ENABLED" \
     LDFLAGS=-ldl \
     --prefix=/opt/vmware \
     --enable-debug=yes \
