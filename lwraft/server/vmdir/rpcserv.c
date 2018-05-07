@@ -1488,6 +1488,10 @@ Srv_RpcVmDirSetBackendState(
 
     dwError = VmDirRpcAllocateMemory( dwDbPathSize, (PVOID*)&(pData) );
     BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirCopyMemory(pData, pDbPath->dwCount, pDbPath->data, pDbPath->dwCount);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
     dwError = VmDirSetMdbBackendState(op, &dwXlogNum, &dwDbSizeMb, &dwDbMapSizeMb, pData, dwDbPathSize);
     BAIL_ON_VMDIR_ERROR(dwError);
 

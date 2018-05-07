@@ -71,6 +71,9 @@ extern "C" {
 
 #define BE_OUTSTANDING_USN_LIST_SIZE        32
 
+#define LOG1_DB_PATH LWRAFT_DB_DIR"/postlog1"
+#define LOG2_DB_PATH LWRAFT_DB_DIR"/postlog2"
+
 typedef enum
 {
     VDIR_BACKEND_ENTRY_LOCK_READ = 0,

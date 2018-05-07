@@ -272,7 +272,6 @@ VmDirBackendConfig(
 #ifdef MULTI_MDB_ENABLED
 
 #define LOG1_DB_DN "cn=v_log1,cn=raftcontext"
-#define LOG1_DB_PATH LWRAFT_DB_DIR"/postlog1"
 
     dwError = _VmDirInitInstance(LOG1_DB_PATH, &pInstance);
     BAIL_ON_VMDIR_ERROR(dwError);

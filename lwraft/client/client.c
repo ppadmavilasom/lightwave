@@ -2610,6 +2610,12 @@ VmDirSetBackendState(
     *pdwLogNum = 0;
     *pdwDbSizeMb = 0;
     *pdwDbMapSizeMb = 0;
+
+    readBufferContainer.dwCount = VmDirStringLenA(pDbPath);
+
+    dwError = VmDirAllocateStringA(pDbPath, (PSTR *)&readBufferContainer.data);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
     VMDIR_RPC_TRY
     {
         dwError =  RpcVmDirSetBackendState( hBinding->hBinding, op, &xlognum, &dbSizeMb,
