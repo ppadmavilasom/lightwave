@@ -153,30 +153,45 @@ error:
     goto cleanup;
 }
 
-VOID
-VmDirdStateSet(
-    VDIR_SERVER_STATE   state)
+static
+DWORD
+_VmDirdStateSetCB(
+    PVDIR_BACKEND_INSTANCE pInstance,
+    PVOID pUserData
+    )
 {
-    BOOLEAN             bInLock = FALSE;
-    VDIR_BACKEND_CTX    beCtx = {0};
+    VDIR_SERVER_STATE   state = (VDIR_SERVER_STATE)pUserData;
+    assert(pInstance && pInstance->pBE);
 
-    VMDIR_LOCK_MUTEX(bInLock, gVmdirGlobals.mutex);
-    gVmdirGlobals.vmdirdState = state;
-    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirGlobals.mutex);
-
-    if (state == VMDIRD_STATE_READ_ONLY) // Wait for the pending write transactions to be over before returning
+    /* Wait for the pending write transactions to be over before returning */
+    if (state == VMDIRD_STATE_READ_ONLY && pInstance->pBE->pfnBEGetLeastOutstandingUSN)
     {
-        beCtx.pBE = VmDirBackendSelect(NULL);
-        assert(beCtx.pBE);
+        VDIR_BACKEND_CTX    beCtx = {0};
+        beCtx.pBE = pInstance->pBE;
 
         while (beCtx.pBE->pfnBEGetLeastOutstandingUSN(&beCtx, TRUE) != 0)
         {
             VMDIR_LOG_VERBOSE( VMDIR_LOG_MASK_ALL, "VmDirdStateSet: Waiting for the pending write transactions to be over" );
             VmDirSleep(2*1000); // sleep for 2 seconds
         }
-    }
 
-    VmDirBackendCtxContentFree(&beCtx);
+        VmDirBackendCtxContentFree(&beCtx);
+    }
+    return 0;
+}
+
+VOID
+VmDirdStateSet(
+    VDIR_SERVER_STATE   state)
+{
+    BOOLEAN             bInLock = FALSE;
+
+    VMDIR_LOCK_MUTEX(bInLock, gVmdirGlobals.mutex);
+    gVmdirGlobals.vmdirdState = state;
+    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirGlobals.mutex);
+
+    VmDirIterateInstances(_VmDirdStateSetCB, (PVOID)state);
+
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "VmDir State (%u)", state);
 
     return;

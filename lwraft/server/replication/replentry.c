@@ -433,7 +433,7 @@ _VmDirPersistLog(PVDIR_RAFT_LOG pLogEntry)
     dwError = VmDirInitStackOperation( &ldapOp, VDIR_OPERATION_TYPE_INTERNAL, LDAP_REQ_ADD, pSchemaCtx );
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    ldapOp.pBEIF = VmDirBackendSelect(NULL);
+    ldapOp.pBEIF = VmDirBackendSelect(RAFT_LOGS_CONTAINER_DN);
     assert(ldapOp.pBEIF);
 
     dwError = VmDirStringPrintFA(logEntryDn, sizeof(logEntryDn), "%s=%llu,%s",

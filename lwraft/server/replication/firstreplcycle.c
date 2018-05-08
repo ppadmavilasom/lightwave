@@ -70,9 +70,8 @@ _VmDirShutdownDB();
 
 static
 int
-_VmDirSwapDB(
-    PCSTR   dbHomeDir,
-    BOOLEAN bHasXlog);
+_VmDirSwapDBs(
+    );
 
 VOID
 VmDirFreeBindingHandle(
@@ -116,7 +115,7 @@ VmDirFirstReplicationCycle(
 
     VmDirMetricsShutdown();
 
-    retVal = _VmDirSwapDB(dbHomeDir, bHasXlog);
+    retVal = _VmDirSwapDBs();
     BAIL_ON_VMDIR_ERROR_WITH_MSG(
             retVal,
             pszLocalErrorMsg,
@@ -675,15 +674,6 @@ _VmDirSwapDB(
         VMDIR_LOG_WARNING(VMDIR_LOG_MASK_ALL, "cannot remove directory %s errno %d", dbExistingName, errorCode);
     }
 
-
-
-    VmDirdStateSet(VMDIRD_STATE_STARTUP);
-
-    retVal = VmDirInitBackend();
-    BAIL_ON_VMDIR_ERROR(retVal);
-
-    VmDirdStateSet(VMDIRD_STATE_NORMAL);
-
 cleanup:
     VMDIR_SAFE_FREE_MEMORY(pszLocalErrorMsg);
     return retVal;
@@ -692,4 +682,28 @@ error:
     retVal = LDAP_OPERATIONS_ERROR;
     VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "%s", VDIR_SAFE_STRING(pszLocalErrorMsg) );
     goto cleanup;
+}
+
+static
+int
+_VmDirSwapDBs(
+    )
+{
+    DWORD retVal = 0;
+
+    retVal = _VmDirSwapDB(LWRAFT_DB_DIR, TRUE);
+    BAIL_ON_VMDIR_ERROR(retVal);
+
+    retVal = _VmDirSwapDB(LOG1_DB_PATH, TRUE);
+    BAIL_ON_VMDIR_ERROR(retVal);
+
+    VmDirdStateSet(VMDIRD_STATE_STARTUP);
+
+    retVal = VmDirInitBackend();
+    BAIL_ON_VMDIR_ERROR(retVal);
+
+    VmDirdStateSet(VMDIRD_STATE_NORMAL);
+
+error:
+    return retVal;
 }

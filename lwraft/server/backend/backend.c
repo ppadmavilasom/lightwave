@@ -175,7 +175,9 @@ VmDirIterateInstances(
         BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
     }
 
-    while (LwRtlHashMapIterate(gVdirBEGlobals.pInstanceMap, &iter, &pair))
+    /* if iterate is called before maps are up, no need to fail */
+    while (gVdirBEGlobals.pInstanceMap &&
+           LwRtlHashMapIterate(gVdirBEGlobals.pInstanceMap, &iter, &pair))
     {
         dwError = pfnCB((PVDIR_BACKEND_INSTANCE)pair.pValue, pUserData);
         BAIL_ON_VMDIR_ERROR(dwError);
