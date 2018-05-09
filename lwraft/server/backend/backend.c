@@ -16,6 +16,8 @@
 
 #include "includes.h"
 
+#define LOG1_DB_DN      "cn=v_log1,cn=raftcontext"
+
 static
 USN
 VmDirBackendLeastOutstandingUSN(
@@ -256,6 +258,10 @@ VmDirBackendConfig(
     dwError = _VmDirMapDNToBackend("/", pInstance->pBE);
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    /* map raft persist state dn to main */
+    dwError = _VmDirMapDNToBackend(RAFT_PERSIST_STATE_DN, pInstance->pBE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
     /* TODO: not applicable for post. remove */
     gVdirBEGlobals.pBE->pfnBEGetLeastOutstandingUSN = VmDirBackendLeastOutstandingUSN;
 
@@ -272,8 +278,6 @@ VmDirBackendConfig(
     pUSNList = NULL;
 
 #ifdef MULTI_MDB_ENABLED
-
-#define LOG1_DB_DN "cn=v_log1,cn=raftcontext"
 
     dwError = _VmDirInitInstance(LOG1_DB_PATH, &pInstance);
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -294,6 +298,22 @@ error:
     goto cleanup;
 }
 
+static
+PVDIR_BACKEND_INTERFACE
+_LookupBE(
+    PCSTR   pszDN
+    )
+{
+    PVDIR_BACKEND_INTERFACE pBE = NULL;
+
+    LwRtlHashMapFindKey(
+            gVdirBEGlobals.pDNToBEMap,
+            (PVOID*)&pBE,
+            pszDN);
+
+    return pBE;
+}
+
 /*
  * Select backend based on entry DN
  */
@@ -307,15 +327,19 @@ VmDirBackendSelect(
 #ifdef MULTI_MDB_ENABLED
     if (!IsNullOrEmptyString(pszDN))
     {
-        PVDIR_BACKEND_INTERFACE pNewBE = NULL;
-if(strstr(pszDN, RAFT_CONTEXT_DN))
-{
-    pszDN = "cn=v_log1,cn=raftcontext";
-}
-        LwRtlHashMapFindKey(
-                gVdirBEGlobals.pDNToBEMap,
-                (PVOID*)&pNewBE,
-                pszDN);
+        /* allow overrides before matching parts */
+        PVDIR_BACKEND_INTERFACE pNewBE = _LookupBE(pszDN);
+
+        /* not final but a dirty hack to test single logs */
+        if (!pNewBE)
+        {
+            if (strstr(pszDN, RAFT_CONTEXT_DN))
+            {
+                pszDN = "cn=v_log1,cn=raftcontext";
+                pNewBE = _LookupBE(pszDN);
+            }
+        }
+
         if (pNewBE)
         {
             pBE = pNewBE;

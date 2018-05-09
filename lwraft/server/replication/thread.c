@@ -462,6 +462,7 @@ _VmDirEvaluateVoteResult(UINT64 *waitTime)
     unsigned long long logIdxToCommit = 0;
     unsigned long long applyIdxStart = 0;
     unsigned int logTermToCommit = 0;
+    BOOLEAN bHasApplyLogs = FALSE;
 
     //This mutex serializes with other Raft RPC handlers
     VMDIR_LOCK_MUTEX(bLockRpcReply, gRaftRpcReplyMutex);
@@ -572,13 +573,25 @@ _VmDirEvaluateVoteResult(UINT64 *waitTime)
     dwError = ldapOp.pBEIF->pfnBETxnCommit(ldapOp.pBECtx);
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    /* LOGSEP - Do we still need this? */
     //VmDirRaftPrepareCommit now owns gLogEntry
     bHasTxn = FALSE;
 
     for (logIdx = applyIdxStart; logIdx < logIdxToCommit; logIdx++)
     {
+        bHasApplyLogs = TRUE;
         _VmDirApplyLog(logIdx);
     }
+
+    if(!bHasApplyLogs)
+    {
+        bHasTxn = TRUE;
+        VMDIR_LOCK_MUTEX(bLock, gRaftStateMutex);
+        gRaftState.commitIndex = logIdxToCommit;
+        gRaftState.commitIndexTerm = gRaftState.lastLogTerm;
+        VMDIR_UNLOCK_MUTEX(bLock, gRaftStateMutex);
+    }
+
 
     VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL,
       "_VmDirEvaluateVoteResult: completed log (%llu %u)", logIdxToCommit, logTermToCommit);
@@ -1801,6 +1814,7 @@ VmDirRaftPostCommit(void *ctx)
             gRaftState.lastApplied = pCtx->logIndex;
         }
         gRaftState.cmd = ExecNone;
+
         VMDIR_LOG_DEBUG(LDAP_DEBUG_REPL, "VmDirRaftPostCommit: log (%llu %d) lastApplied %llu logOp %d",
                         pCtx->logIndex, pCtx->logTerm, gRaftState.lastApplied, pCtx->logRequestCode);
         VMDIR_UNLOCK_MUTEX(bLock, gRaftStateMutex);
@@ -2244,6 +2258,8 @@ _VmDirApplyLog(unsigned long long indexToApply)
     BOOLEAN bHasTxn = FALSE;
     unsigned long long priCommitIndex = 0;
     int logEntrySize = 0;
+    /* unpacked logs are always applied to main database */
+    PVDIR_BACKEND_INTERFACE pBEMain = VmDirBackendSelect(NULL);
 
     VMDIR_LOCK_MUTEX(bLock, gRaftStateMutex);
     if (indexToApply <= gRaftState.lastApplied)
@@ -2306,7 +2322,7 @@ _VmDirApplyLog(unsigned long long indexToApply)
         VmDirFreeEntry(ldapOp.request.addReq.pEntry);
         ldapOp.request.addReq.pEntry = &entry;
 
-        ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
+        ldapOp.pBEIF = pBEMain;
         assert(ldapOp.pBEIF);
 
         dwError = VmDirEntryAttrValueNormalize(ldapOp.pBECtx, &entry, FALSE /*all attributes*/);
@@ -2336,7 +2352,7 @@ _VmDirApplyLog(unsigned long long indexToApply)
         dwError = VmDirInitStackOperation( &ldapOp, VDIR_OPERATION_TYPE_REPL, LDAP_REQ_MODIFY, pSchemaCtx );
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
+        ldapOp.pBEIF = pBEMain;
         assert(ldapOp.pBEIF);
 
         modReq = &(ldapOp.request.modifyReq);
@@ -2379,7 +2395,7 @@ _VmDirApplyLog(unsigned long long indexToApply)
         dwError = VmDirInitStackOperation( &ldapOp, VDIR_OPERATION_TYPE_REPL, LDAP_REQ_DELETE, pSchemaCtx );
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
+        ldapOp.pBEIF = pBEMain;
         assert(ldapOp.pBEIF);
 
         dwError = ldapOp.pBEIF->pfnBETxnBegin(ldapOp.pBECtx, VDIR_BACKEND_TXN_WRITE);
@@ -3093,7 +3109,7 @@ _VmdirDeleteLog(unsigned long long logIndex, BOOLEAN bCompactLog)
     dwError = VmDirInitStackOperation( &ldapOp, VDIR_OPERATION_TYPE_INTERNAL, LDAP_REQ_DELETE, pSchemaCtx );
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
+    ldapOp.pBEIF = VmDirBackendSelect(RAFT_LOGS_CONTAINER_DN);
     assert(ldapOp.pBEIF);
 
     dwError = VmDirAllocateStringPrintf(&pDn, "%s=%llu,%s", ATTR_CN, logIndex, RAFT_LOGS_CONTAINER_DN);
