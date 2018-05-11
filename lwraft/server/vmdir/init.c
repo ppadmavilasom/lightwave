@@ -221,12 +221,8 @@ VmDirInitBackend(
         dwError = _VmDirGenerateInvocationId(); // to be used in replication meta data for the entries created in
         BAIL_ON_VMDIR_ERROR(dwError);           // InitializeVmdirdSystemEntries()
 
-/* LOGSEP REVIEW */
-        dwError = VmDirInitRaftPsState(pBE);
-        BAIL_ON_VMDIR_ERROR(dwError);
-
-pBE = VmDirBackendSelect(RAFT_CONTEXT_DN);
-        dwError = VmDirInitRaftPsState(pBE);
+        /* init raft state will have to create entries in main and log databases */
+        dwError = VmDirInitRaftPsState();
         BAIL_ON_VMDIR_ERROR(dwError);
 
         dwError = InitializeVmdirdSystemEntries();

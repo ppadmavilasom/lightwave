@@ -39,7 +39,7 @@ VmDirRaftLogEntryId(unsigned long long LogIndex)
 
 //Create the initial persistent state
 DWORD
-VmDirInitRaftPsState(
+_VmDirInitRaftPsStateInBE(
     PVDIR_BACKEND_INTERFACE pBE
     )
 {
@@ -91,6 +91,116 @@ cleanup:
 
 error:
     VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL, "VmDirInitRaftPsState: error %d", dwError);
+    goto cleanup;
+}
+
+/*
+ * initialize main db
+ * initialize log db
+*/
+DWORD
+VmDirInitRaftPsState(
+    )
+{
+    DWORD dwError = 0;
+    PVDIR_BACKEND_INTERFACE pBE = NULL;
+
+    /* init main db */
+    pBE = VmDirBackendSelect(NULL);
+
+    dwError = _VmDirInitRaftPsStateInBE(pBE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    /* init log db */
+    pBE = VmDirBackendSelect(RAFT_LOGS_CONTAINER_DN);
+
+    dwError = _VmDirInitRaftPsStateInBE(pBE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+error:
+    return dwError;
+}
+
+/*
+ * called when there is a previous log at startup.
+ * note that the previous log database could be an older
+ * combined log and state db. The previous log backend
+ * must be supplied. if a backend is not supplied,
+ * search will naturally resolve to the first
+ * log db as it is the one registered for cn=logs,cn=raftcontext
+*/
+static
+DWORD
+_VmDirGetPreviousLogBoundaries(
+    UINT64 *pStartLogIndex,
+    UINT64 *pEndLogIndex
+    )
+{
+    DWORD dwError = 0;
+    int i = 0;
+    VDIR_ENTRY_ARRAY entryArray = {0};
+    PVDIR_ATTRIBUTE pAttr = NULL;
+    char filterStr[RAFT_CONTEXT_DN_MAX_LEN] = {0};
+    UINT64 startLogIndex = 0;
+    UINT64 endLogIndex = 0;
+    UINT64 curLogIndex = 0;
+    PVDIR_BACKEND_INTERFACE pBEPrevLog = NULL;
+
+    if (!pStartLogIndex || !pEndLogIndex)
+    {
+         BAIL_WITH_VMDIR_ERROR(dwError, ERROR_INVALID_PARAMETER);
+    }
+
+    pBEPrevLog = VmDirBackendSelect(LOG_DN_PREVIOUS);
+    assert(pBEPrevLog);
+
+    curLogIndex = gRaftState.lastLogIndex;
+    dwError = VmDirStringPrintFA(filterStr, sizeof(filterStr), "(%s<%llu)",
+                                 ATTR_RAFT_LOGINDEX, gRaftState.lastLogIndex);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirFilterInternalSearchInBE(
+                  pBEPrevLog,
+                  RAFT_LOGS_CONTAINER_DN,
+                  LDAP_SCOPE_ONE,
+                  filterStr,
+                  0,
+                  NULL,
+                  &entryArray);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    for (i = 0; i < entryArray.iSize; i++)
+    {
+        pAttr = VmDirFindAttrByName(&(entryArray.pEntry[i]), ATTR_RAFT_LOGINDEX);
+        curLogIndex = VmDirStringToLA(pAttr->vals[0].lberbv.bv_val, NULL, 10);
+        if (curLogIndex > endLogIndex)
+        {
+            endLogIndex = curLogIndex;
+        }
+        if (startLogIndex < curLogIndex)
+        {
+            startLogIndex = curLogIndex;
+        }
+    }
+
+    if (startLogIndex == 0 || endLogIndex == 0)
+    {
+        dwError = LDAP_OPERATIONS_ERROR;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+
+    *pStartLogIndex = startLogIndex;
+    *pEndLogIndex = endLogIndex;
+
+cleanup:
+    VmDirFreeEntryArrayContent(&entryArray);
+    return dwError;
+
+error:
+    VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL,
+        "_VmDirGetLastIndex: curLogIndex %llu,\
+        firstLogIndex %llu endLogIndex %llu error %d",
+        curLogIndex, startLogIndex, endLogIndex, dwError);
     goto cleanup;
 }
 
@@ -157,9 +267,20 @@ _VmDirLoadRaftState(
     dwError = _VmDirGetLastIndex(&gRaftState.lastLogIndex, &gRaftState.lastLogTerm);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    /* LOGSEP HACK - dont check in */
-    gRaftState.commitIndex = gRaftState.lastLogIndex;
-    gRaftState.lastApplied = gRaftState.commitIndex;
+    /* Populate previous log db details if any */
+    if (VmDirHasBackend(LOG_DN_PREVIOUS))
+    {
+        UINT64 nPrevLogStartIndex = 0;
+        gRaftState.bHasPrevLog = TRUE;
+
+        dwError = _VmDirGetPreviousLogBoundaries(
+                      &nPrevLogStartIndex,
+                      &gRaftState.prevLogEndIndex);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        gRaftState.prevLogStartIndex = gRaftState.firstLogIndex;
+        gRaftState.firstLogIndex = nPrevLogStartIndex;
+    }
 
     gRaftState.initialized = TRUE;
 
@@ -244,7 +365,7 @@ VmDirAddRaftEntry(PVDIR_SCHEMA_CTX pSchemaCtx, PVDIR_RAFT_LOG pLogEntry, PVDIR_O
 
     raftEntry.eId = VmDirRaftLogEntryId(pLogEntry->index);
 
-    beCtx.pBE = VmDirBackendSelect(RAFT_CONTEXT_DN);
+    beCtx.pBE = VmDirBackendSelect(RAFT_LOGS_CONTAINER_DN);
 
     dwError = beCtx.pBE->pfnBETxnBegin(&beCtx, VDIR_BACKEND_TXN_WRITE);
     BAIL_ON_VMDIR_ERROR(dwError);

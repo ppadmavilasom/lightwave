@@ -74,6 +74,9 @@ extern "C" {
 #define LOG1_DB_PATH LWRAFT_DB_DIR"/postlog1"
 #define LOG2_DB_PATH LWRAFT_DB_DIR"/postlog2"
 
+#define LOG_DN_CURRENT  "cn=v_curlog,cn=raftcontext"
+#define LOG_DN_PREVIOUS "cn=v_prevlog,cn=raftcontext"
+
 typedef enum
 {
     VDIR_BACKEND_ENTRY_LOCK_READ = 0,
@@ -702,6 +705,11 @@ VmDirBackendGetFirstNextUSN(
 PVDIR_BACKEND_INTERFACE
 VmDirBackendSelect(
     PCSTR   pszDN);
+
+BOOLEAN
+VmDirHasBackend(
+    PCSTR pszDN
+    );
 
 DWORD
 VmDirInstanceFromBE(

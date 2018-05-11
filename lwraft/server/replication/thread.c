@@ -473,7 +473,7 @@ _VmDirEvaluateVoteResult(UINT64 *waitTime)
     dwError = VmDirInitStackOperation(&ldapOp, VDIR_OPERATION_TYPE_REPL, LDAP_REQ_MODIFY, pSchemaCtx );
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
+    ldapOp.pBEIF = VmDirBackendSelect(RAFT_LOGS_CONTAINER_DN);
     assert(ldapOp.pBEIF);
 
     //Once returned successfully, it would block any other write transactions
@@ -3190,7 +3190,7 @@ VmDirPersistTerm(
     dwError = VmDirInitStackOperation( &ldapOp, VDIR_OPERATION_TYPE_INTERNAL, LDAP_REQ_MODIFY, pSchemaCtx );
     BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pszLocalErrorMsg), "VmDirInitStackOperation");
 
-    ldapOp.pBEIF = VmDirBackendSelect(RAFT_CONTEXT_DN);
+    ldapOp.pBEIF = VmDirBackendSelect(RAFT_PERSIST_STATE_DN);
     assert(ldapOp.pBEIF);
 
     if (term > 0)

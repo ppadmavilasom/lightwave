@@ -71,7 +71,6 @@ VmDirFirstReplicationCycle(
 
 DWORD
 VmDirInitRaftPsState(
-    PVDIR_BACKEND_INTERFACE pBE
     );
 
 DWORD

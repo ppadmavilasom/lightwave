@@ -16,8 +16,6 @@
 
 #include "includes.h"
 
-#define LOG1_DB_DN      "cn=v_log1,cn=raftcontext"
-
 static
 USN
 VmDirBackendLeastOutstandingUSN(
@@ -282,7 +280,7 @@ VmDirBackendConfig(
     dwError = _VmDirInitInstance(LOG1_DB_PATH, &pInstance);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = _VmDirMapDNToBackend(LOG1_DB_DN, pInstance->pBE);
+    dwError = _VmDirMapDNToBackend(LOG_DN_CURRENT, pInstance->pBE);
     BAIL_ON_VMDIR_ERROR(dwError);
 
 #endif
@@ -335,7 +333,7 @@ VmDirBackendSelect(
         {
             if (strstr(pszDN, RAFT_CONTEXT_DN))
             {
-                pszDN = "cn=v_log1,cn=raftcontext";
+                pszDN = LOG_DN_CURRENT;
                 pNewBE = _LookupBE(pszDN);
             }
         }
@@ -348,6 +346,14 @@ VmDirBackendSelect(
 #endif
 
     return pBE;
+}
+
+BOOLEAN
+VmDirHasBackend(
+    PCSTR pszDN
+    )
+{
+    return _LookupBE(pszDN) ? TRUE : FALSE;
 }
 
 DWORD

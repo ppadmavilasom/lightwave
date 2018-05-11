@@ -442,19 +442,15 @@ error:
     goto cleanup;
 }
 
-/*
- * This generic search with pagination is new and isn't mature. Please be
- * careful with the * scope, base, and use an indexed filter.
- * Note that ulPageSize == 0 will ignore paging.
- */
 DWORD
-VmDirFilterInternalSearch(
-    PCSTR               pszBaseDN,
-    int                 searchScope,
-    PCSTR               pszFilter,
-    unsigned long       ulPageSize,
-    PSTR                *ppszPageCookie,
-    PVDIR_ENTRY_ARRAY   pEntryArray
+VmDirFilterInternalSearchInBE(
+    PVDIR_BACKEND_INTERFACE pBE,
+    PCSTR                   pszBaseDN,
+    int                     searchScope,
+    PCSTR                   pszFilter,
+    unsigned long           ulPageSize,
+    PSTR                    *ppszPageCookie,
+    PVDIR_ENTRY_ARRAY       pEntryArray
     )
 {
     DWORD           dwError = 0;
@@ -499,7 +495,7 @@ VmDirFilterInternalSearch(
     bervDN.lberbv.bv_val = (PSTR)pszBaseDN;
     bervDN.lberbv.bv_len = VmDirStringLenA(pszBaseDN);
 
-    searchOP.pBEIF = VmDirBackendSelect(pszBaseDN);
+    searchOP.pBEIF = pBE ? pBE : VmDirBackendSelect(pszBaseDN);
     assert(searchOP.pBEIF);
 
     dwError = VmDirBervalContentDup(&bervDN, &searchOP.reqDn);
@@ -548,6 +544,31 @@ cleanup:
 
 error:
     goto cleanup;
+}
+
+/*
+ * This generic search with pagination is new and isn't mature. Please be
+ * careful with the * scope, base, and use an indexed filter.
+ * Note that ulPageSize == 0 will ignore paging.
+ */
+DWORD
+VmDirFilterInternalSearch(
+    PCSTR               pszBaseDN,
+    int                 searchScope,
+    PCSTR               pszFilter,
+    unsigned long       ulPageSize,
+    PSTR                *ppszPageCookie,
+    PVDIR_ENTRY_ARRAY   pEntryArray
+    )
+{
+    return VmDirFilterInternalSearchInBE(
+               NULL,
+               pszBaseDN,
+               searchScope,
+               pszFilter,
+               ulPageSize,
+               ppszPageCookie,
+               pEntryArray);
 }
 
 /*
