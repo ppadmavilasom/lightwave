@@ -175,7 +175,6 @@ VmDirIterateInstances(
         BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
     }
 
-    /* if iterate is called before maps are up, no need to fail */
     while (gVdirBEGlobals.pInstanceMap &&
            LwRtlHashMapIterate(gVdirBEGlobals.pInstanceMap, &iter, &pair))
     {
@@ -230,6 +229,89 @@ error:
     return dwError;
 }
 
+static
+DWORD
+_HasLogRecords(
+    PVDIR_BACKEND_INTERFACE pBE,
+    BOOLEAN *pHasLogRecords
+    )
+{
+    DWORD dwError = 0;
+    BOOLEAN bHasLogRecords = FALSE;
+    VDIR_OPERATION searchOp = {0};
+
+    if (!pBE || !pHasLogRecords)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
+    }
+
+
+    dwError = VmDirInitStackOperation( &searchOp,
+                                       VDIR_OPERATION_TYPE_INTERNAL,
+                                       LDAP_REQ_SEARCH,
+                                       NULL );
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    searchOp.pBEIF = pBE;
+    searchOp.reqDn.lberbv.bv_val = RAFT_LOGS_CONTAINER_DN;
+    searchOp.reqDn.lberbv.bv_len = VmDirStringLenA(RAFT_LOGS_CONTAINER_DN);
+    searchOp.request.searchReq.scope = LDAP_SCOPE_ONE;
+    searchOp.request.searchReq.sizeLimit = 1;
+
+    dwError = StrFilterToFilter(
+                  "objectClass=*",
+                  &searchOp.request.searchReq.filter);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirInternalSearch(&searchOp);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (searchOp.internalSearchEntryArray.iSize > 0)
+    {
+        bHasLogRecords = TRUE;
+    }
+
+    *pHasLogRecords = bHasLogRecords;
+
+error:
+    /* okay to accept entry not found errors */
+    if(dwError == VMDIR_ERROR_BACKEND_ENTRY_NOTFOUND)
+    {
+        dwError = 0;
+    }
+    VmDirFreeOperationContent(&searchOp);
+
+    return dwError;
+}
+
+/*
+ * Do post init log mapping. Requires schema init so is called
+ * after base config
+*/
+DWORD
+VmDirBackendMapPreviousLogs(
+    VOID
+    )
+{
+    DWORD dwError = 0;
+    BOOLEAN bHasLogRecords = FALSE;
+
+    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(ALIAS_MAIN);
+
+    /* if main database has logs, map it as the previous log database */
+    dwError = _HasLogRecords(pBE, &bHasLogRecords);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (bHasLogRecords)
+    {
+        dwError = _VmDirMapDNToBackend(ALIAS_LOG_PREVIOUS, pBE);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+error:
+    return dwError;
+}
+
 /*
  * Called during server start up to configure backends(s)
  * Currently, we only support ONE backend.
@@ -253,7 +335,7 @@ VmDirBackendConfig(
     gVdirBEGlobals.pBE = pInstance->pBE;
 
     /* map main db */
-    dwError = _VmDirMapDNToBackend("/", pInstance->pBE);
+    dwError = _VmDirMapDNToBackend(ALIAS_MAIN, pInstance->pBE);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     /* map raft persist state dn to main */
@@ -280,9 +362,11 @@ VmDirBackendConfig(
     dwError = _VmDirInitInstance(LOG1_DB_PATH, &pInstance);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = _VmDirMapDNToBackend(LOG_DN_CURRENT, pInstance->pBE);
+    dwError = _VmDirMapDNToBackend(ALIAS_LOG_CURRENT, pInstance->pBE);
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    dwError = _VmDirMapDNToBackend(RAFT_LOGS_CONTAINER_DN, pInstance->pBE);
+    BAIL_ON_VMDIR_ERROR(dwError);
 #endif
 
 cleanup:
@@ -333,7 +417,7 @@ VmDirBackendSelect(
         {
             if (strstr(pszDN, RAFT_CONTEXT_DN))
             {
-                pszDN = LOG_DN_CURRENT;
+                pszDN = RAFT_LOGS_CONTAINER_DN;
                 pNewBE = _LookupBE(pszDN);
             }
         }

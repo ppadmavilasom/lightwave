@@ -90,7 +90,15 @@ cleanup:
     return dwError;
 
 error:
-    VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL, "VmDirInitRaftPsState: error %d", dwError);
+    /* if entry already exists, database already initialized */
+    if (dwError == VMDIR_ERROR_BACKEND_ENTRY_EXISTS)
+    {
+        dwError = 0;
+    }
+    else
+    {
+        VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL, "VmDirInitRaftPsState: error %d", dwError);
+    }
     goto cleanup;
 }
 
@@ -140,7 +148,7 @@ _VmDirGetPreviousLogBoundaries(
     VDIR_ENTRY_ARRAY entryArray = {0};
     PVDIR_ATTRIBUTE pAttr = NULL;
     char filterStr[RAFT_CONTEXT_DN_MAX_LEN] = {0};
-    UINT64 startLogIndex = 0;
+    UINT64 startLogIndex = LONG_MAX;
     UINT64 endLogIndex = 0;
     UINT64 curLogIndex = 0;
     PVDIR_BACKEND_INTERFACE pBEPrevLog = NULL;
@@ -150,12 +158,11 @@ _VmDirGetPreviousLogBoundaries(
          BAIL_WITH_VMDIR_ERROR(dwError, ERROR_INVALID_PARAMETER);
     }
 
-    pBEPrevLog = VmDirBackendSelect(LOG_DN_PREVIOUS);
+    pBEPrevLog = VmDirBackendSelect(ALIAS_LOG_PREVIOUS);
     assert(pBEPrevLog);
 
-    curLogIndex = gRaftState.lastLogIndex;
-    dwError = VmDirStringPrintFA(filterStr, sizeof(filterStr), "(%s<%llu)",
-                                 ATTR_RAFT_LOGINDEX, gRaftState.lastLogIndex);
+    dwError = VmDirStringPrintFA(filterStr, sizeof(filterStr), "(%s<=%llu)",
+                                 ATTR_RAFT_LOGINDEX, gRaftState.lastApplied);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirFilterInternalSearchInBE(
@@ -176,7 +183,7 @@ _VmDirGetPreviousLogBoundaries(
         {
             endLogIndex = curLogIndex;
         }
-        if (startLogIndex < curLogIndex)
+        if (curLogIndex < startLogIndex)
         {
             startLogIndex = curLogIndex;
         }
@@ -254,6 +261,19 @@ _VmDirLoadRaftState(
     }
     gRaftState.firstLogIndex = VmDirStringToLA(pAttr->vals[0].lberbv.bv_val, NULL, 10);
 
+    /* Populate previous log db details if any */
+    if (VmDirHasBackend(ALIAS_LOG_PREVIOUS))
+    {
+        gRaftState.bHasPrevLog = TRUE;
+
+        dwError = _VmDirGetPreviousLogBoundaries(
+                      &gRaftState.prevLogStartIndex,
+                      &gRaftState.prevLogEndIndex);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        gRaftState.firstLogIndex = gRaftState.prevLogEndIndex + 1;
+    }
+
     dwError = _VmDirFetchLogEntry(gRaftState.lastApplied, &logEntry, __LINE__);
     BAIL_ON_VMDIR_ERROR(dwError);
 
@@ -266,21 +286,6 @@ _VmDirLoadRaftState(
 
     dwError = _VmDirGetLastIndex(&gRaftState.lastLogIndex, &gRaftState.lastLogTerm);
     BAIL_ON_VMDIR_ERROR(dwError);
-
-    /* Populate previous log db details if any */
-    if (VmDirHasBackend(LOG_DN_PREVIOUS))
-    {
-        UINT64 nPrevLogStartIndex = 0;
-        gRaftState.bHasPrevLog = TRUE;
-
-        dwError = _VmDirGetPreviousLogBoundaries(
-                      &nPrevLogStartIndex,
-                      &gRaftState.prevLogEndIndex);
-        BAIL_ON_VMDIR_ERROR(dwError);
-
-        gRaftState.prevLogStartIndex = gRaftState.firstLogIndex;
-        gRaftState.firstLogIndex = nPrevLogStartIndex;
-    }
 
     gRaftState.initialized = TRUE;
 
@@ -604,6 +609,29 @@ error:
     goto cleanup;
 }
 
+/*
+ * since there are current and previous logs, the log backend must be determined first
+ * then query done with that backend. gRaftState has range of current and previous log
+ * and an indicator if there is a previous log.
+*/
+PVDIR_BACKEND_INTERFACE
+_GetBEForLogIndex(
+    unsigned long long logIndex
+    )
+{
+    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(ALIAS_LOG_CURRENT);
+
+    if (gRaftState.bHasPrevLog)
+    {
+        if (logIndex >= gRaftState.prevLogStartIndex &&
+            logIndex <= gRaftState.prevLogEndIndex)
+        {
+            pBE = VmDirBackendSelect(ALIAS_LOG_PREVIOUS);
+        }
+    }
+    return pBE;
+}
+
 DWORD
 _VmDirFetchLogEntry(unsigned long long logIndex, PVDIR_RAFT_LOG pLogEntry, int from)
 {
@@ -612,12 +640,24 @@ _VmDirFetchLogEntry(unsigned long long logIndex, PVDIR_RAFT_LOG pLogEntry, int f
     PVDIR_ATTRIBUTE pAttr = NULL;
     VDIR_ENTRY_ARRAY entryArray = {0};
     char filterStr[RAFT_CONTEXT_DN_MAX_LEN] = {0};
+    PVDIR_BACKEND_INTERFACE pBE = NULL;
 
     VMDIR_LOG_DEBUG(LDAP_DEBUG_REPL, "_VmDirFetchLogEntry entering with logIndex %llu", logIndex);
+
     dwError = VmDirStringPrintFA(filterStr, sizeof(filterStr), "(%s=%llu)", ATTR_RAFT_LOGINDEX, logIndex);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirFilterInternalSearch(RAFT_LOGS_CONTAINER_DN, LDAP_SCOPE_ONE, filterStr, 0, NULL, &entryArray);
+    pBE = _GetBEForLogIndex(logIndex);
+    assert(pBE);
+
+    dwError = VmDirFilterInternalSearchInBE(
+                  pBE,
+                  RAFT_LOGS_CONTAINER_DN,
+                  LDAP_SCOPE_ONE,
+                  filterStr,
+                  0,
+                  NULL,
+                  &entryArray);
     BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pszLocalErrorMsg),
           "_VmDirFetchLogEntry: internalSearch error %d filter %s dn", dwError, filterStr, RAFT_LOGS_CONTAINER_DN);
 
@@ -939,7 +979,23 @@ _VmDirGetLastIndex(UINT64 *index, UINT32 *term)
                                  ATTR_RAFT_LOGINDEX, gRaftState.lastApplied);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirFilterInternalSearch(RAFT_LOGS_CONTAINER_DN, LDAP_SCOPE_ONE, filterStr, 0, NULL, &entryArray);
+    dwError = VmDirFilterInternalSearch(
+                  RAFT_LOGS_CONTAINER_DN,
+                  LDAP_SCOPE_ONE,
+                  filterStr,
+                  0,
+                  NULL,
+                  &entryArray);
+    /*
+     * this search could fail if there is a previous log and this run
+     * created a new log database. the new log database will not have
+     * entries at this time.
+    */
+    if (dwError == VMDIR_ERROR_BACKEND_ENTRY_NOTFOUND && gRaftState.bHasPrevLog)
+    {
+        dwError = 0;
+        lastLogIndex = gRaftState.prevLogEndIndex;
+    }
     BAIL_ON_VMDIR_ERROR(dwError);
 
     for (i = 0; i < entryArray.iSize; i++)
@@ -950,6 +1006,11 @@ _VmDirGetLastIndex(UINT64 *index, UINT32 *term)
         {
             lastLogIndex = curLogIndex;
         }
+    }
+
+    if (lastLogIndex == 0 && gRaftState.bHasPrevLog)
+    {
+        lastLogIndex = gRaftState.prevLogEndIndex;
     }
 
     if (lastLogIndex == 0)

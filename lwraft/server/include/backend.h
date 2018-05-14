@@ -74,8 +74,14 @@ extern "C" {
 #define LOG1_DB_PATH LWRAFT_DB_DIR"/postlog1"
 #define LOG2_DB_PATH LWRAFT_DB_DIR"/postlog2"
 
-#define LOG_DN_CURRENT  "cn=v_curlog,cn=raftcontext"
-#define LOG_DN_PREVIOUS "cn=v_prevlog,cn=raftcontext"
+/*
+ * name aliases of databases in post instance
+ * these are used for selecting a particular database for
+ * a specific operation.
+*/
+#define ALIAS_MAIN         "_backend_main"
+#define ALIAS_LOG_CURRENT  "_backend_log_current"
+#define ALIAS_LOG_PREVIOUS "_backend_log_previous"
 
 typedef enum
 {
@@ -696,6 +702,11 @@ typedef struct _VDIR_BACKEND_GLOBALS
 DWORD
 VmDirBackendConfig(
     VOID);
+
+DWORD
+VmDirBackendMapPreviousLogs(
+    VOID
+    );
 
 VOID
 VmDirBackendGetFirstNextUSN(

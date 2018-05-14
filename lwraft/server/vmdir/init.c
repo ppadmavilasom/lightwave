@@ -216,14 +216,19 @@ VmDirInitBackend(
     dwError = VmDirBackendInitUSNList(pBE);
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    /* run init tasks for additional logs */
+    dwError = VmDirBackendMapPreviousLogs();
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    /* init raft state will have to create entries in main and log databases */
+    dwError = VmDirInitRaftPsState();
+    BAIL_ON_VMDIR_ERROR(dwError);
+
     if (bInitializeEntries)
     {
         dwError = _VmDirGenerateInvocationId(); // to be used in replication meta data for the entries created in
         BAIL_ON_VMDIR_ERROR(dwError);           // InitializeVmdirdSystemEntries()
 
-        /* init raft state will have to create entries in main and log databases */
-        dwError = VmDirInitRaftPsState();
-        BAIL_ON_VMDIR_ERROR(dwError);
 
         dwError = InitializeVmdirdSystemEntries();
         BAIL_ON_VMDIR_ERROR(dwError);

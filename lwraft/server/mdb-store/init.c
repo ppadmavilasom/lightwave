@@ -891,12 +891,7 @@ VmDirSetMdbBackendState(
     unsigned long lognum = 0L;
     unsigned long  dbSizeMb = 0L;
     unsigned long  dbMapSizeMb = 0L;
-    PVDIR_MDB_DB pDB = NULL;
-
-    /* TODO: Should apply to all backends when there are multiple mdbs */
-    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
-
-    pDB = (PVDIR_MDB_DB)VmDirSafeDBFromBE(pBE);
+    PVDIR_MDB_DB pDB = VmDirSafeDBFromPath(pszDbPath);
 
     if (!pDB || op < MDB_STATE_CLEAR || op > MDB_STATE_GETXLOGNUM)
     {
