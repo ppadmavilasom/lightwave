@@ -1477,7 +1477,7 @@ VmDirDeleteEntry(
     dwError = VmDirInitStackOperation(&op, VDIR_OPERATION_TYPE_INTERNAL, LDAP_REQ_DELETE, NULL);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    op.pBEIF = VmDirBackendSelect(NULL);
+    op.pBEIF = VmDirBackendSelect(op.reqDn.lberbv.bv_val);
     op.reqDn.lberbv_val = pEntry->dn.lberbv.bv_val;
     op.reqDn.lberbv_len = pEntry->dn.lberbv.bv_len;
 

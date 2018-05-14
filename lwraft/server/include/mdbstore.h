@@ -20,8 +20,9 @@
 // entry.c
 DWORD
 VmDirMDBSimpleEIdToEntry(
-    ENTRYID     eId,
-    PVDIR_ENTRY pEntry
+    PVDIR_BACKEND_INTERFACE pBE,
+    ENTRYID                 eId,
+    PVDIR_ENTRY             pEntry
     );
 
 DWORD
@@ -33,8 +34,8 @@ VmDirMDBSimpleDnToEntry(
 
 DWORD
 VmDirMDBMaxEntryId(
-    PVDIR_DB_HANDLE hDB,
-    ENTRYID *      pEId
+    PVDIR_BACKEND_INTERFACE pBE,
+    ENTRYID *               pEId
     );
 
 DWORD

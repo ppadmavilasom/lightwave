@@ -165,7 +165,8 @@ VmDirIndexCfgRelease(
 
 BOOLEAN
 VmDirIndexExist(
-    PCSTR   pszAttrName
+    PVDIR_BACKEND_INTERFACE pBE,
+    PCSTR                   pszAttrName
     )
 {
     DWORD dwError = 0;
@@ -174,7 +175,8 @@ VmDirIndexExist(
     PLW_HASHMAP pUpdMap = NULL;
     PVDIR_INDEX_CFG pIndexCfg = NULL;
     PVDIR_INDEX_DATA pIndexData = NULL;
-    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
+
+    assert(pBE);
 
     dwError = VmDirLookupIndexData(pBE, &pIndexData);
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -260,11 +262,6 @@ VmDirIndexUpdateBegin(
     PVDIR_INDEX_DATA pIndexData = NULL;
     PVDIR_BACKEND_INTERFACE pBE = VmDirSafeBEFromCtx(pBECtx);
 
-    if(!pBE)
-    {
-        pBE = VmDirBackendSelect(NULL);
-    }
-
     if (!pBE || !ppIndexUpd)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
@@ -307,7 +304,8 @@ error:
 
 DWORD
 VmDirIndexUpdateCommit(
-    PVDIR_INDEX_UPD     pIndexUpd
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd
     )
 {
     DWORD   dwError = 0;
@@ -315,9 +313,8 @@ VmDirIndexUpdateCommit(
     LW_HASHMAP_PAIR pair = {NULL, NULL};
     PSTR            pszStatus = NULL;
     PVDIR_INDEX_DATA pIndexData = NULL;
-    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
-    if (!pIndexUpd)
+    if (!pBE || !pIndexUpd)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -404,9 +401,10 @@ error:
 
 DWORD
 VmDirIndexSchedule(
-    PVDIR_INDEX_UPD     pIndexUpd,
-    PCSTR               pszAttrName,
-    PCSTR               pszAttrSyntaxOid
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd,
+    PCSTR                   pszAttrName,
+    PCSTR                   pszAttrSyntaxOid
     )
 {
     DWORD   dwError = 0;
@@ -416,9 +414,8 @@ VmDirIndexSchedule(
     PVDIR_INDEX_CFG pUpdCfg = NULL;
     PVDIR_INDEX_CFG pNewCfg = NULL;
     PVDIR_INDEX_DATA pIndexData = NULL;
-    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
-    if (!pIndexUpd || IsNullOrEmptyString(pszAttrName))
+    if (!pBE || !pIndexUpd || IsNullOrEmptyString(pszAttrName))
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -485,8 +482,9 @@ error:
 
 DWORD
 VmDirIndexDelete(
-    PVDIR_INDEX_UPD     pIndexUpd,
-    PCSTR               pszAttrName
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd,
+    PCSTR                   pszAttrName
     )
 {
     DWORD   dwError = 0;
@@ -496,9 +494,8 @@ VmDirIndexDelete(
     PVDIR_INDEX_CFG pUpdCfg = NULL;
     PVDIR_INDEX_CFG pNewCfg = NULL;
     PVDIR_INDEX_DATA pIndexData = NULL;
-    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
-    if (!pIndexUpd || IsNullOrEmptyString(pszAttrName))
+    if (!pBE || !pIndexUpd || IsNullOrEmptyString(pszAttrName))
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -552,9 +549,10 @@ error:
 
 DWORD
 VmDirIndexAddUniquenessScope(
-    PVDIR_INDEX_UPD     pIndexUpd,
-    PCSTR               pszAttrName,
-    PCSTR*              ppszUniqScopes
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd,
+    PCSTR                   pszAttrName,
+    PCSTR*                  ppszUniqScopes
     )
 {
     DWORD   dwError = 0;
@@ -565,9 +563,8 @@ VmDirIndexAddUniquenessScope(
     PVDIR_INDEX_CFG pUpdCfg = NULL;
     PVDIR_INDEX_CFG pNewCfg = NULL;
     PVDIR_INDEX_DATA pIndexData = NULL;
-    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
-    if (!pIndexUpd || IsNullOrEmptyString(pszAttrName) || !ppszUniqScopes)
+    if (!pBE || !pIndexUpd || IsNullOrEmptyString(pszAttrName) || !ppszUniqScopes)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -626,9 +623,10 @@ error:
 
 DWORD
 VmDirIndexDeleteUniquenessScope(
-    PVDIR_INDEX_UPD     pIndexUpd,
-    PCSTR               pszAttrName,
-    PCSTR*              ppszUniqScopes
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd,
+    PCSTR                   pszAttrName,
+    PCSTR*                  ppszUniqScopes
     )
 {
     DWORD   dwError = 0;
@@ -639,9 +637,8 @@ VmDirIndexDeleteUniquenessScope(
     PVDIR_INDEX_CFG pUpdCfg = NULL;
     PVDIR_INDEX_CFG pNewCfg = NULL;
     PVDIR_INDEX_DATA pIndexData = NULL;
-    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(NULL);
 
-    if (!pIndexUpd || IsNullOrEmptyString(pszAttrName) || !ppszUniqScopes)
+    if (!pBE || !pIndexUpd || IsNullOrEmptyString(pszAttrName) || !ppszUniqScopes)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);

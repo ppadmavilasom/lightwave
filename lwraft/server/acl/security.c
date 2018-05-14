@@ -184,6 +184,7 @@ VmDirSetRecursiveSecurityDescriptorForDn(
                                         &entryArray);
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    /* REVIEW_QUESTION: Is ALIAS_MAIN appropriate here? */
     pBE = VmDirBackendSelect(NULL);
 
     hDB = VmDirSafeDBFromBE(pBE);
@@ -335,7 +336,7 @@ VmDirSetDefaultSecurityDescriptorForClass(
             &ldapOp, VDIR_OPERATION_TYPE_INTERNAL, LDAP_REQ_MODIFY, NULL);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    ldapOp.pBEIF = VmDirBackendSelect(NULL);
+    ldapOp.pBEIF = VmDirBackendSelect(ALIAS_MAIN);
     ldapOp.bSuppressLogInfo = TRUE;
     ldapOp.reqDn.lberbv_val = pszClassDN;
     ldapOp.reqDn.lberbv_len = VmDirStringLenA(pszClassDN);

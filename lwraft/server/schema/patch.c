@@ -35,7 +35,7 @@ _CreateNewLocalSchemaObject(
             NULL);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    ldapOp.pBEIF = VmDirBackendSelect(NULL);
+    ldapOp.pBEIF = VmDirBackendSelect(ALIAS_MAIN);
     ldapOp.reqDn.lberbv_val = pObjDiff->pszDN;
     ldapOp.reqDn.lberbv_len = VmDirStringLenA(pObjDiff->pszDN);
 
@@ -99,7 +99,7 @@ _ModifyExistingLocalSchemaObject(
             NULL);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    ldapOp.pBEIF = VmDirBackendSelect(NULL);
+    ldapOp.pBEIF = VmDirBackendSelect(ALIAS_MAIN);
     ldapOp.reqDn.lberbv_val = pObjDiff->pszDN;
     ldapOp.reqDn.lberbv_len = VmDirStringLenA(pObjDiff->pszDN);
 
@@ -164,7 +164,7 @@ VmDirPatchLocalSchemaObjects(
             &pSchemaDiff);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    beCtx.pBE = VmDirBackendSelect(NULL);
+    beCtx.pBE = VmDirBackendSelect(ALIAS_MAIN);
 
     hDB = VmDirSafeDBFromCtx(&beCtx);
     assert(hDB);

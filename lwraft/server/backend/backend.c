@@ -412,7 +412,6 @@ VmDirBackendSelect(
         /* allow overrides before matching parts */
         PVDIR_BACKEND_INTERFACE pNewBE = _LookupBE(pszDN);
 
-        /* not final but a dirty hack to test single logs */
         if (!pNewBE)
         {
             if (strstr(pszDN, RAFT_CONTEXT_DN))
@@ -756,7 +755,7 @@ VmDirBackendUniqKeyGetValue(
         BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
     }
 
-    beCtx.pBE = VmDirBackendSelect(NULL);
+    beCtx.pBE = VmDirBackendSelect(ALIAS_MAIN);
     dwError = beCtx.pBE->pfnBETxnBegin(&beCtx, VDIR_BACKEND_TXN_READ);
     BAIL_ON_VMDIR_ERROR(dwError);
     bHasTxn = TRUE;
@@ -802,7 +801,7 @@ VmDirBackendUniqKeySetValue(
         BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
     }
 
-    beCtx.pBE = VmDirBackendSelect(NULL);
+    beCtx.pBE = VmDirBackendSelect(ALIAS_MAIN);
     dwError = beCtx.pBE->pfnBETxnBegin(&beCtx, VDIR_BACKEND_TXN_WRITE);
     BAIL_ON_VMDIR_ERROR(dwError);
     bHasTxn = TRUE;

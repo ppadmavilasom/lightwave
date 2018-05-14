@@ -114,13 +114,13 @@ VmDirInitRaftPsState(
     PVDIR_BACKEND_INTERFACE pBE = NULL;
 
     /* init main db */
-    pBE = VmDirBackendSelect(NULL);
+    pBE = VmDirBackendSelect(ALIAS_MAIN);
 
     dwError = _VmDirInitRaftPsStateInBE(pBE);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     /* init log db */
-    pBE = VmDirBackendSelect(RAFT_LOGS_CONTAINER_DN);
+    pBE = VmDirBackendSelect(ALIAS_LOG_CURRENT);
 
     dwError = _VmDirInitRaftPsStateInBE(pBE);
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -609,29 +609,6 @@ error:
     goto cleanup;
 }
 
-/*
- * since there are current and previous logs, the log backend must be determined first
- * then query done with that backend. gRaftState has range of current and previous log
- * and an indicator if there is a previous log.
-*/
-PVDIR_BACKEND_INTERFACE
-_GetBEForLogIndex(
-    unsigned long long logIndex
-    )
-{
-    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(ALIAS_LOG_CURRENT);
-
-    if (gRaftState.bHasPrevLog)
-    {
-        if (logIndex >= gRaftState.prevLogStartIndex &&
-            logIndex <= gRaftState.prevLogEndIndex)
-        {
-            pBE = VmDirBackendSelect(ALIAS_LOG_PREVIOUS);
-        }
-    }
-    return pBE;
-}
-
 DWORD
 _VmDirFetchLogEntry(unsigned long long logIndex, PVDIR_RAFT_LOG pLogEntry, int from)
 {
@@ -647,7 +624,7 @@ _VmDirFetchLogEntry(unsigned long long logIndex, PVDIR_RAFT_LOG pLogEntry, int f
     dwError = VmDirStringPrintFA(filterStr, sizeof(filterStr), "(%s=%llu)", ATTR_RAFT_LOGINDEX, logIndex);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    pBE = _GetBEForLogIndex(logIndex);
+    pBE = VmDirBackendForLogIndex(logIndex);
     assert(pBE);
 
     dwError = VmDirFilterInternalSearchInBE(
@@ -1146,4 +1123,29 @@ _VmDirCompareLogIdx(
     {
         return -1;
     }
+}
+
+/*
+ * if there is a previous log, a log entry could be in the previous logdb.
+ * this function takes this into consideration and returns the right db.
+ * if there is a previous log and logIndex falls in previous log range,
+ * the previous log db is returned. For all other cases, current log db
+ * is returned.
+*/
+PVDIR_BACKEND_INTERFACE
+VmDirBackendForLogIndex(
+    unsigned long long logIndex
+    )
+{
+    PVDIR_BACKEND_INTERFACE pBE = VmDirBackendSelect(ALIAS_LOG_CURRENT);
+
+    if (gRaftState.bHasPrevLog)
+    {
+        if (logIndex >= gRaftState.prevLogStartIndex &&
+            logIndex <= gRaftState.prevLogEndIndex)
+        {
+            pBE = VmDirBackendSelect(ALIAS_LOG_PREVIOUS);
+        }
+    }
+    return pBE;
 }

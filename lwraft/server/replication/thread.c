@@ -2259,7 +2259,7 @@ _VmDirApplyLog(unsigned long long indexToApply)
     unsigned long long priCommitIndex = 0;
     int logEntrySize = 0;
     /* unpacked logs are always applied to main database */
-    PVDIR_BACKEND_INTERFACE pBEMain = VmDirBackendSelect(NULL);
+    PVDIR_BACKEND_INTERFACE pBEMain = VmDirBackendSelect(ALIAS_MAIN);
 
     VMDIR_LOCK_MUTEX(bLock, gRaftStateMutex);
     if (indexToApply <= gRaftState.lastApplied)
@@ -3109,7 +3109,7 @@ _VmdirDeleteLog(unsigned long long logIndex, BOOLEAN bCompactLog)
     dwError = VmDirInitStackOperation( &ldapOp, VDIR_OPERATION_TYPE_INTERNAL, LDAP_REQ_DELETE, pSchemaCtx );
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    ldapOp.pBEIF = VmDirBackendSelect(RAFT_LOGS_CONTAINER_DN);
+    ldapOp.pBEIF = VmDirBackendForLogIndex(logIndex);
     assert(ldapOp.pBEIF);
 
     dwError = VmDirAllocateStringPrintf(&pDn, "%s=%llu,%s", ATTR_CN, logIndex, RAFT_LOGS_CONTAINER_DN);
@@ -3149,6 +3149,11 @@ _VmdirDeleteLog(unsigned long long logIndex, BOOLEAN bCompactLog)
             }
             gRaftState.lastLogIndex = preLogIndex;
             gRaftState.lastLogTerm = preLogTerm;
+
+            if (gRaftState.bHasPrevLog && logIndex <= gRaftState.prevLogEndIndex)
+            {
+                gRaftState.prevLogEndIndex = preLogIndex;
+            }
         }
         VMDIR_UNLOCK_MUTEX(bLock, gRaftStateMutex);
 

@@ -115,7 +115,7 @@ VmDirPluginIndexEntryPostAdd(
         iSearchFlags = VmDirStringToIA(pszSearchFlags);
         pCNAttr = VmDirFindAttrByName(pEntry, ATTR_CN);
 
-        dwError = VmDirIndexUpdateBegin(NULL, &pIndexUpd);
+        dwError = VmDirIndexUpdateBegin(pOperation->pBECtx, &pIndexUpd);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         // if searchFlags & 1, schedule index
@@ -123,6 +123,7 @@ VmDirPluginIndexEntryPostAdd(
         {
             pSXAttr = VmDirFindAttrByName(pEntry, ATTR_ATTRIBUTE_SYNTAX);
             dwError = VmDirIndexSchedule(
+                    pOperation->pBEIF,
                     pIndexUpd,
                     pCNAttr->vals[0].lberbv.bv_val,
                     pSXAttr->vals[0].lberbv.bv_val);
@@ -145,13 +146,14 @@ VmDirPluginIndexEntryPostAdd(
             }
 
             dwError = VmDirIndexAddUniquenessScope(
+                    pOperation->pBEIF,
                     pIndexUpd,
                     pCNAttr->vals[0].lberbv.bv_val,
                     pScopes->pStringList);
             BAIL_ON_VMDIR_ERROR(dwError);
         }
 
-        dwError = VmDirIndexUpdateCommit(pIndexUpd);
+        dwError = VmDirIndexUpdateCommit(pOperation->pBEIF, pIndexUpd);
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
@@ -210,7 +212,7 @@ VmDirPluginIndexEntryPreModApplyModify(
     dwError = VmDirDnLastRDNToCn(pszDN, &pszCN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    bExist = VmDirIndexExist(pszCN);
+    bExist = VmDirIndexExist(pOperation->pBEIF, pszCN);
 
     // analyze mods what they are intended to do
     for (pMod = pModReq->mods; pMod; pMod = pMod->next)
@@ -342,7 +344,7 @@ VmDirPluginIndexEntryPreModify(
 
     // is it already indexed?
     pCNAttr = VmDirFindAttrByName(pEntry, ATTR_CN);
-    bExist = VmDirIndexExist(pCNAttr->vals[0].lberbv.bv_val);
+    bExist = VmDirIndexExist(pOperation->pBEIF, pCNAttr->vals[0].lberbv.bv_val);
 
     // do we need an index?
     pSFAttr = VmDirFindAttrByName(pEntry, ATTR_SEARCH_FLAGS);
@@ -361,6 +363,7 @@ VmDirPluginIndexEntryPreModify(
     {
         pSXAttr = VmDirFindAttrByName(pEntry, ATTR_ATTRIBUTE_SYNTAX);
         dwError = VmDirIndexSchedule(
+                pOperation->pBEIF,
                 pIndexUpd,
                 pCNAttr->vals[0].lberbv.bv_val,
                 pSXAttr->vals[0].lberbv.bv_val);
@@ -371,7 +374,10 @@ VmDirPluginIndexEntryPreModify(
     // delete index if no longer needed
     else if (bExist && !bNeed)
     {
-        dwError = VmDirIndexDelete(pIndexUpd, pCNAttr->vals[0].lberbv.bv_val);
+        dwError = VmDirIndexDelete(
+                      pOperation->pBEIF,
+                      pIndexUpd,
+                      pCNAttr->vals[0].lberbv.bv_val);
         BAIL_ON_VMDIR_ERROR(dwError);
         bExist = FALSE;
     }
@@ -400,6 +406,7 @@ VmDirPluginIndexEntryPreModify(
                     if (pMod->operation == MOD_OP_DELETE)
                     {
                         dwError = VmDirIndexDeleteUniquenessScope(
+                                pOperation->pBEIF,
                                 pIndexUpd,
                                 pCNAttr->vals[0].lberbv.bv_val,
                                 pScopes->pStringList);
@@ -408,6 +415,7 @@ VmDirPluginIndexEntryPreModify(
                     else if (pMod->operation == MOD_OP_ADD)
                     {
                         dwError = VmDirIndexAddUniquenessScope(
+                                pOperation->pBEIF,
                                 pIndexUpd,
                                 pCNAttr->vals[0].lberbv.bv_val,
                                 pScopes->pStringList);
@@ -421,7 +429,7 @@ VmDirPluginIndexEntryPreModify(
         }
     }
 
-    dwError = VmDirIndexUpdateCommit(pIndexUpd);
+    dwError = VmDirIndexUpdateCommit(pOperation->pBEIF, pIndexUpd);
     BAIL_ON_VMDIR_ERROR(dwError);
 
 cleanup:

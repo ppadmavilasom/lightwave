@@ -87,7 +87,7 @@ VmDirLoadIndex(
     indexData.ppATDescList = ppATDescList;
 
     /* load indices for main db */
-    beInstance.pBE = VmDirBackendSelect(NULL);
+    beInstance.pBE = VmDirBackendSelect(ALIAS_MAIN);
     dwError = _VmDirLoadIndexForBE(&beInstance, &indexData);
     BAIL_ON_VMDIR_ERROR(dwError);
 

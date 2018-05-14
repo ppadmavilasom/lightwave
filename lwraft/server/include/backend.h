@@ -115,8 +115,8 @@ typedef struct _VDIR_BACKEND_USN_LIST*          PVDIR_BACKEND_USN_LIST;
  * ERROR_BACKEND_ERROR:             all others
  */
 typedef DWORD (*PFN_BACKEND_MAX_ENTRY_ID)(
-                    PVDIR_DB_HANDLE  hDB,
-                    ENTRYID*        pEId
+                    PVDIR_BACKEND_INTERFACE pBE,
+                    ENTRYID*                pEId
                     );
 /*
  * Convenient id to entry lookup
@@ -126,8 +126,9 @@ typedef DWORD (*PFN_BACKEND_MAX_ENTRY_ID)(
  * ERROR_BACKEND_ERROR:             all others
  */
 typedef DWORD (*PFN_BACKEND_SIMPLE_ID_TO_ENTRY)(
-                    ENTRYID         eId,
-                    PVDIR_ENTRY     pEntry
+                    PVDIR_BACKEND_INTERFACE pBE,
+                    ENTRYID                 eId,
+                    PVDIR_ENTRY             pEntry
                     );
 
 /*

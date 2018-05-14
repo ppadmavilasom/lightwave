@@ -89,9 +89,7 @@ VmDirIndexingTaskCompute(
     }
     else
     {
-        PVDIR_DB_HANDLE hDB = VmDirSafeDBFromBE(pBE);
-
-        dwError = pBE->pfnBEMaxEntryId(hDB, &maxEId);
+        dwError = pBE->pfnBEMaxEntryId(pBE, &maxEId);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         pIndexData->offset += INDEXING_BATCH_SIZE;

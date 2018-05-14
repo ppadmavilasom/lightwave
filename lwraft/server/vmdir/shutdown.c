@@ -48,7 +48,7 @@ VmDirShutdown(
     assert(pbVmDirStopped);
     *pbVmDirStopped = FALSE;
 
-    pBE = VmDirBackendSelect(NULL);
+    pBE = VmDirBackendSelect(ALIAS_MAIN);
 
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: stop REST listening threads", __func__);
     if (VmDirRESTServerStop() == 0)

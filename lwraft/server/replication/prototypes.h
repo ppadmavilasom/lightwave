@@ -252,6 +252,11 @@ VmDirPersistTerm(
     int term
     );
 
+PVDIR_BACKEND_INTERFACE
+VmDirBackendForLogIndex(
+    unsigned long long logIndex
+    );
+
 #ifdef __cplusplus
 }
 #endif

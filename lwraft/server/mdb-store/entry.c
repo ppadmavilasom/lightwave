@@ -18,6 +18,7 @@
 
 DWORD
 VmDirMDBSimpleEIdToEntry(
+    PVDIR_BACKEND_INTERFACE pBE,
     ENTRYID         eId,
     PVDIR_ENTRY     pEntry)
 {
@@ -26,12 +27,12 @@ VmDirMDBSimpleEIdToEntry(
     VDIR_BACKEND_CTX    mdbBECtx = {0};
     BOOLEAN             bHasTxn = FALSE;
 
-    assert(pEntry);
+    assert(pBE && pEntry);
 
     dwError = VmDirSchemaCtxAcquire(&pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    mdbBECtx.pBE = VmDirBackendSelect(NULL);
+    mdbBECtx.pBE = pBE;
 
     dwError = VmDirMDBTxnBegin(&mdbBECtx, VDIR_BACKEND_TXN_READ);
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -135,8 +136,9 @@ error:
 // To get the current max ENTRYID
 DWORD
 VmDirMDBMaxEntryId(
-    PVDIR_DB_HANDLE     hDB,
-    ENTRYID*            pEId)
+    PVDIR_BACKEND_INTERFACE pBE,
+    ENTRYID*                pEId
+    )
 {
     DWORD           dwError = 0;
     PVDIR_DB_TXN    pTxn = NULL;
@@ -146,7 +148,7 @@ VmDirMDBMaxEntryId(
     MDB_val         value  = {0};
     ENTRYID         eId = LOG_ENTRY_EID_PREFIX;
     unsigned char   EIDBytes[sizeof(ENTRYID)] = {0};
-    PVDIR_MDB_DB pDB = (PVDIR_MDB_DB)hDB;
+    PVDIR_MDB_DB pDB = VmDirSafeDBFromBE(pBE);
 
     assert(pEId && pDB);
 

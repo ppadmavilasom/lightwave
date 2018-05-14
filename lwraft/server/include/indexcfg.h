@@ -150,7 +150,8 @@ VmDirIndexCfgRelease(
 
 BOOLEAN
 VmDirIndexExist(
-    PCSTR   pszAttrName
+    PVDIR_BACKEND_INTERFACE pBE,
+    PCSTR                   pszAttrName
     );
 
 DWORD
@@ -189,7 +190,8 @@ VmDirIndexUpdateBegin(
 
 DWORD
 VmDirIndexUpdateCommit(
-    PVDIR_INDEX_UPD     pIndexUpd
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd
     );
 
 DWORD
@@ -199,29 +201,33 @@ VmDirIndexUpdateAbort(
 
 DWORD
 VmDirIndexSchedule(
-    PVDIR_INDEX_UPD     pIndexUpd,
-    PCSTR               pszAttrName,
-    PCSTR               pszAttrSyntaxOid
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd,
+    PCSTR                   pszAttrName,
+    PCSTR                   pszAttrSyntaxOid
     );
 
 DWORD
 VmDirIndexDelete(
-    PVDIR_INDEX_UPD     pIndexUpd,
-    PCSTR               pszAttrName
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd,
+    PCSTR                   pszAttrName
     );
 
 DWORD
 VmDirIndexAddUniquenessScope(
-    PVDIR_INDEX_UPD     pIndexUpd,
-    PCSTR               pszAttrName,
-    PCSTR*              ppszUniqScopes
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd,
+    PCSTR                   pszAttrName,
+    PCSTR*                  ppszUniqScopes
     );
 
 DWORD
 VmDirIndexDeleteUniquenessScope(
-    PVDIR_INDEX_UPD     pIndexUpd,
-    PCSTR               pszAttrName,
-    PCSTR*              ppszUniqScopes
+    PVDIR_BACKEND_INTERFACE pBE,
+    PVDIR_INDEX_UPD         pIndexUpd,
+    PCSTR                   pszAttrName,
+    PCSTR*                  ppszUniqScopes
     );
 
 #ifdef __cplusplus

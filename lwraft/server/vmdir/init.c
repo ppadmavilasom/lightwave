@@ -174,7 +174,7 @@ VmDirInitBackend(
     BAIL_ON_VMDIR_ERROR(dwError);
 
     /* get the main database backend */
-    pBE = VmDirBackendSelect(NULL);
+    pBE = VmDirBackendSelect(ALIAS_MAIN);
     assert(pBE);
 
     dwError = VmDirInstanceFromBE(pBE, &pInstance);

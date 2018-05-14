@@ -396,7 +396,7 @@ MdbValidateAttrUniqueness(
             break;
         }
 
-        dwError = VmDirMDBSimpleEIdToEntry(eId, &entry);
+        dwError = VmDirMDBSimpleEIdToEntry(pBE, eId, &entry);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         pszDN = BERVAL_NORM_VAL(entry.dn);

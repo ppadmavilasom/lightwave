@@ -101,7 +101,8 @@ ProcessPreValidatedEntries(
                  pOperation->internalSearchEntryArray.iSize) : &srEntry;
 
         dwError = pOperation->pBEIF->pfnBESimpleIdToEntry(
-                pValidatedEntries[i], pSrEntry);
+                      pOperation->pBEIF,
+                      pValidatedEntries[i], pSrEntry);
         if (dwError != 0)
         {
             // Ignore errors resolving ENTRYIDs.

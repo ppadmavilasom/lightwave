@@ -575,7 +575,7 @@ VmDirIndexCfgValidateUniqueScopeMods(
             VMDIR_SAFE_FREE_MEMORY(pszVal);
         }
 
-        dwError = pBE->pfnBESimpleIdToEntry(eId, &entry);
+        dwError = pBE->pfnBESimpleIdToEntry(pBE, eId, &entry);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         pNode = pNewScopes->pTail;
