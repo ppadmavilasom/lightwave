@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/ppadmavilasom/lightwave.svg?branch=dev)](https://travis-ci.org/ppadmavilasom/lightwave)
+
 What is Lightwave
 ================
 
