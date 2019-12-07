@@ -10,10 +10,21 @@ if [ ! -f /usr/local/bin/docker-compose ]; then
   sudo chmod +x /usr/local/bin/docker-compose
 fi
 
-function build() {
-  ./hmake -q
+function bootstrap() {
+  ./hmake bootstrap-lightwave-photon3
 }
 
+function build() {
+  ./hmake build-lightwave-photon3
+}
+
+function check() {
+  ./hmake check-lightwave-photon3
+}
+
+function pack() {
+  ./hmake -q pack-photon3
+}
 
 function test() {
   #make .env file
@@ -24,8 +35,14 @@ function test() {
   sudo ./hmake -S pack -S build -S build-lightwave-photon3 test
 }
 
-if [[ $1 == 'build' ]]; then
+if [[ $1 == 'bootstrap' ]]; then
+  bootstrap
+elif [[ $1 == 'build' ]]; then
   build
+elif [[ $1 == 'pack' ]]; then
+  pack
+elif [[ $1 == 'check' ]]; then
+  check
 else
   test
 fi
