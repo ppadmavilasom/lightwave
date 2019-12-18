@@ -708,60 +708,6 @@ AC_CHECK_HEADERS(sqlite3.h)
 CPPFLAGS="$saved_CPPFLAGS"
 
 #--------------------------------------------------------------------
-# BOOST components
-
-AC_ARG_WITH([boost],
-    [AC_HELP_STRING([--with-boost=<dir>],
-                    [use BOOST binaries rooted at prefix <dir>])],
-    [
-        BOOST_BASE_PATH="$withval"
-    ],
-    [
-        BOOST_BASE_PATH="/usr"
-    ])
-
-AC_ARG_WITH([boost-includes],
-    [AC_HELP_STRING([--with-boost-includes=<dir>],
-                    [use BOOST headers located in prefix <dir>])],
-    [
-        BOOST_INCLUDES="-I$withval"
-    ],
-    [
-        BOOST_INCLUDES="-I$BOOST_BASE_PATH/include"
-    ])
-
-AC_ARG_WITH([boost-libs],
-    [AC_HELP_STRING([--with-boost-libs=<dir>],
-                    [use BOOST libraries located in prefix <dir>])],
-    [
-        BOOST_LDFLAGS="-L$withval"
-    ],
-    [
-        BOOST_LDFLAGS="-L$BOOST_BASE_PATH/lib"
-    ])
-
-AC_ARG_WITH([boost-python-lib],
-    [AC_HELP_STRING([--with-boost-python-lib=<dir>],
-                    [use BOOST Python library extension])],
-    [
-        BOOST_PYTHON_EXT="$withval"
-        BOOST_PYTHON_LDFLAGS="$BOOST_BASE_PATH/lib/libboost_python-$BOOST_PYTHON_EXT.a"
-    ])
-
-AC_SUBST(BOOST_BASE_PATH)
-AC_SUBST(BOOST_INCLUDES)
-AC_SUBST(BOOST_LDFLAGS)
-AC_SUBST(BOOST_PYTHON_EXT)
-AC_SUBST(BOOST_PYTHON_LDFLAGS)
-
-saved_CPPFLAGS="$CPPFLAGS"
-CPPFLAGS="$CPPFLAGS $BOOST_INCLUDES"
-AC_LANG_PUSH([C++])
-AC_CHECK_HEADERS(boost/asio.hpp)
-AC_LANG_POP([C++])
-CPPFLAGS="$saved_CPPFLAGS"
-
-#--------------------------------------------------------------------
 # Python components
 
 AC_ARG_WITH([python],
@@ -1060,28 +1006,6 @@ AC_CHECK_LIB([domainjoin],
     [],
     [$LW_LDFLAGS -ldomainjoin -lcentutils -leventlog -leventlogutils -llsaclient -llsacommon -llwnetclientapi -llwnetcommon -llwsm -llwsmcommon $DCERPC_LIBS $SCHANNEL_LIBS $LWMSG_LIBS $LWRSUTILS_LIBS $LWREG_LIBS $LWIO_LIBS $LWBASE_LIBS $LDAP_LIBS $PTHREAD_LIBS $UUID_LIBS $LWBASE_LIBS $GSSAPI_LIBS $OPENSSL_LDFLAGS $CRYPTO_LIBS -llwadvapi_nothr])
 
-AC_LANG_PUSH([C++])
-
-AC_CHECK_LIB([boost_unit_test_framework-gcc41-mt-1_55],
-    [main],
-    [BOOST_LIBS="-lboost_system-gcc41-mt-s-1_55 -lboost_filesystem-gcc41-mt-s-1_55 -lboost_program_options-gcc41-mt-s-1_55"],
-    [],
-    [$BOOST_LDFLAGS])
-
-AC_CHECK_LIB([boost_unit_test_framework-xgcc42-mt-1_55],
-    [main],
-    [BOOST_LIBS="-lboost_system-xgcc42-mt-s-1_55 -lboost_filesystem-xgcc42-mt-s-1_55 -lboost_program_options-xgcc42-mt-s-1_55"],
-    [],
-    [$BOOST_LDFLAGS])
-
-AC_CHECK_LIB([boost_unit_test_framework],
-    [main],
-    [BOOST_LIBS="-lboost_thread -lboost_system -lboost_filesystem -lboost_program_options"],
-    [],
-    [$BOOST_LDFLAGS])
-
-AC_LANG_POP([C++])
-
 AC_CHECK_LIB([sqlite3],
     [sqlite3_open],
     [SQLITE_LIBS="-lsqlite3"],
@@ -1121,7 +1045,6 @@ AC_SUBST(JANSSON_LIBS)
 AC_SUBST(COPENAPI_LIBS)
 AC_SUBST(CRESTENGINE_LIBS)
 AC_SUBST(DOMAINJOIN_LIBS)
-AC_SUBST(BOOST_LIBS)
 AC_SUBST(PYTHON_LIBS)
 AC_SUBST(SQLITE_LIBS)
 AC_SUBST(LWSM_LIBS)
@@ -1460,13 +1383,6 @@ AC_ARG_ENABLE([python],
         fi
     ])
 AM_CONDITIONAL(ENABLE_PYTHON, [$ENABLE_PYTHON])
-
-saved_CPPFLAGS="$CPPFLAGS"
-CPPFLAGS="$CPPFLAGS $BOOST_INCLUDES"
-AC_LANG_PUSH([C++])
-AC_CHECK_HEADERS(boost/asio.hpp)
-AC_LANG_POP([C++])
-CPPFLAGS="$saved_CPPFLAGS"
 
 #--------------------------------------------------------------------
 

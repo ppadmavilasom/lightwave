@@ -2,5 +2,8 @@ SUBDIRS = \
     java \
     jni  \
     cdcjni \
-    heartbeatjni \
-    python
+    heartbeatjni
+
+if ENABLE_PYTHON
+    SUBDIRS += python
+endif

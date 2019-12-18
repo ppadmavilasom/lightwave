@@ -1,8 +1,6 @@
 clear
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/workspaces/lotus/main/gobuild/compcache/boost1470_lin64_gcc412/ob-764487/linux64/lib
-export PATH=$PATH:../build/certool
 pwd
-#certool = '../build/certool/certool'
+certool = '../build/vmca/certool/certool'
 echo "Starting Certool Test"
 echo "Testing Help Commands"
 certool --help || echo "certool --help FAILED"

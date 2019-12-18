@@ -1,6 +1,5 @@
 clear
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/zhiwen/workspaces/lotus/main/gobuild/compcache/boost1470_lin64_gcc412/ob-764487/linux64/lib
-certool='../build/certool/certool --config=../config/certool.cfg'
+certool='../../build/vmca/certool/certool --config=../config/certool.cfg'
 echo "Starting Certool Test"
 echo "using certool from " $certool
 echo "Testing Help Commands"
@@ -10,10 +9,10 @@ $certool --help functions || echo "certool --help functions \e[0;31;47m FAILED \
 $certool --help config || echo "certool --help config \e[0;31;47m FAILED \033[0m" 
 $certool --help files || echo "certool --help files \e[0;31;47m FAILED \033[0m" 
 
-
 echo "Testing Init Functions"
 $certool --initcsr --privkey=cerTest.priv --pubkey=cerTest.pub --csrfile=cerTest.csr || echo "certool --initcsr --privkey=cerTest.priv --pubkey=cerTest.pub \e[0;31;47m FAILED \033[0m"
 
+exit 0
 echo "Testing Selfca Functions"
 $certool --selfca || echo "certool --selfca \e[0;31;47m FAILED \033[0m"
 

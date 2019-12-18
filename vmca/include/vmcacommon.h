@@ -32,6 +32,7 @@
 
 
 #include <pthread.h>
+#include "vmcadefines.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -76,26 +77,10 @@ typedef struct _VMW_CFG_KEY*        PVMW_CFG_KEY;
 #define VMCA_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define VMCA_MAX(a, b) ((a) > (b) ? (a) : (b))
 
-#define VMCA_SAFE_FREE_STRINGA(PTR)    \
-    do {                          \
-        if ((PTR)) {              \
-            VMCAFreeStringA(PTR); \
-            (PTR) = NULL;         \
-        }                         \
-    } while(0)
-
 #define VMCA_SAFE_FREE_STRINGW(PTR)    \
     do {                          \
         if ((PTR)) {              \
             VMCAFreeStringW(PTR); \
-            (PTR) = NULL;         \
-        }                         \
-    } while(0)
-
-#define VMCA_SAFE_FREE_MEMORY(PTR)\
-    do {                          \
-        if ((PTR)) {              \
-            VMCAFreeMemory(PTR);  \
             (PTR) = NULL;         \
         }                         \
     } while(0)
@@ -286,17 +271,6 @@ extern VMCA_LOG_LEVEL VMCALogGetLevel();
         goto error;                             \
     }
 
-#define BAIL_ON_VMCA_ERROR_NO_LOG(dwError) \
-    if (dwError) { goto error; }
-
-#ifndef IsNullOrEmptyString
-#define IsNullOrEmptyString(str) (!(str) || !*(str))
-#endif
-
-#ifndef VMCA_SAFE_STRING
-#define VMCA_SAFE_STRING(str) ((str) ? (str) : "")
-#endif
-
 #define VMCA_REG_KEY_VMCADBPATH              "DbPath"
 #define VMCA_REG_KEY_LOGFILEPATH             "LogFilePath"
 #define VMCA_REG_KEY_CERTFILEPATH            "CertFilePath"
@@ -315,11 +289,6 @@ extern VMCA_LOG_LEVEL VMCALogGetLevel();
 #define VMCA_EVENT_SOURCE                    "VMware Certificate-Service"
 
 #define WIN_SYSTEM32_PATH                   "c:\\windows\\system32"
-
-#ifdef REST_V2_ENABLED
-#define RSA_SERVER_CERT                     VMCA_CONFIG_DIR "/vmcacert.pem"
-#define RSA_SERVER_KEY                      VMCA_CONFIG_DIR "/vmcakey.pem"
-#endif
 
 #if 0
 /* mutexes/threads/conditions */
@@ -678,12 +647,6 @@ VMCACopyFile(
 DWORD
 VMCARestrictDirectoryAccess(
     PCSTR pszDirectoryName
-    );
-
-DWORD
-VMCAFileExists(
-    PCSTR       pszFileName,
-    PBOOLEAN    pbFound
     );
 
 DWORD
